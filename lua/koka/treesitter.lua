@@ -82,11 +82,11 @@ function M.find_runnables(bufnr)
     vim.treesitter.query.parse,
     'koka',
     [[
-    (fundecl
-      (identifier) @func.name
+    (puredecl
+      (qidentifier) @func.name
       (#match? @func.name "^(main|test.*|example.*)$")
     ) @func
-  ]]
+    ]]
   )
   if not ok then
     return M._find_runnables_fallback(bufnr)
