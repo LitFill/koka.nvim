@@ -61,32 +61,20 @@ Plug 'syaiful6/koka.nvim'
 The plugin automatically activates when you open a `.kk` file. No manual setup
 required!
 
-### TreeSitter Commands
+### Koka Subcommands
+
+All commands are under `:Koka <subcommand>`:
 
 | Command | Description |
 |---------|-------------|
-| `:KokaTSInstall` | Install Koka TreeSitter parser |
-| `:KokaTSUpdate` | Update Koka TreeSitter parser to latest version |
-| `:KokaTSUninstall` | Uninstall Koka TreeSitter parser |
-| `:KokaTSStatus` | Check TreeSitter parser installation status |
-
-### LSP Commands
-
-| Command | Description |
-|---------|-------------|
-| `:KokaLsp start` | Start the Koka LSP server |
-| `:KokaLsp stop` | Stop the Koka LSP server |
-| `:KokaLsp restart` | Restart the Koka LSP server |
-
-### General Commands
-
-| Command | Description |
-|---------|-------------|
-| `:KokaRun` | Run function at cursor |
-| `:KokaBuild` | Build current file or project |
-| `:KokaTest` | Run all test functions in current buffer |
-| `:KokaShowConfig` | Show current project configuration |
-| `:KokaRefreshCodeLens` | Refresh code lenses |
+| `:Koka run` | Run function at cursor |
+| `:Koka build` | Build current file or project |
+| `:Koka test` | Run all test functions in current buffer |
+| `:Koka config` | Show current project configuration |
+| `:Koka refresh_codelens` | Refresh code lenses |
+| `:Koka lsp start` | Start the Koka LSP server |
+| `:Koka lsp stop` | Stop the Koka LSP server |
+| `:Koka lsp restart` | Restart the Koka LSP server |
 
 ### Code Execution
 
@@ -100,17 +88,17 @@ function patterns:
 ### Codelens Features
 
 When LSP is active, codelens appear above runnable functions showing
-"▶ function_name". Use `:KokaRun` to execute the function at cursor:
+"▶ function_name". Use `:Koka run` to execute the function at cursor:
 
 - **Smart Compilation**: Uses `koka/compileFunction` for individual functions,
   `koka/compile` for main
-- **Multi-target Support**: Supports C, JavaScript (Node.js), and other Koka
-  targets
+- **Multi-target Support**: Supports C, JavaScript (Node.js), WebAssembly, and
+  other Koka targets
 - **Terminal Integration**: Opens execution results in a new terminal tab
 - **Fallback Mode**: Works without LSP using direct `koka -e` execution
 
 > **Note**: Codelens may be clickable in some Neovim configurations, but the
-> recommended way to run functions is using `:KokaRun` command.
+> recommended way to run functions is using `:Koka run` command.
 
 ## Project Configuration
 
@@ -136,6 +124,32 @@ Create a `koka.json` or `.koka.json` file in your project root:
 
 Supported targets: `c`, `c32`, `c64c`, `wasm`, `jsnode`
 
+**`wasm` target**: Compiles to WebAssembly. Requires a WebAssembly runtime to execute.
+
+**`jsnode` target**: Compiles to Node.js JavaScript. Requires Node.js runtime.
+
+### `koka.json` for `wasm` target example
+
+```json
+{
+  "target": "wasm",
+  "cwd": "./www",
+  "include_dirs": ["src"],
+  "compiler_args": ["--buildtag=jsnode"]
+}
+```
+
+### `koka.json` for `jsnode` target example
+
+```json
+{
+  "target": "jsnode",
+  "cwd": "./www",
+  "include_dirs": ["src"],
+  "compiler_args": ["--buildtag=jsnode"]
+}
+```
+
 ## Advanced Configuration
 
 ### Lazy.nvim with Custom Setup
@@ -154,10 +168,10 @@ Supported targets: `c`, `c32`, `c64c`, `wasm`, `jsnode`
       pattern = "koka",
       callback = function()
         local buf = vim.api.nvim_get_current_buf()
-        vim.keymap.set("n", "<leader>kr", ":KokaRun<CR>",
+        vim.keymap.set("n", "<leader>kr", ":Koka run<CR>",
           { buffer = buf, desc = "Run Koka function at cursor" })
 
-        vim.keymap.set("n", "<leader>kb", ":KokaBuild<CR>",
+        vim.keymap.set("n", "<leader>kb", ":Koka build<CR>",
           { buffer = buf, desc = "Build Koka file" })
       end,
     })
@@ -197,10 +211,10 @@ koka.nvim/
 │   ├── project.lua            # Project detection and config parsing
 │   └── debugger.lua           # Code execution via LSP commands
 └── queries/koka/              # TreeSitter queries
-    ├── highlights.scm
-    ├── indents.scm
-    ├── injections.scm
-    └── locals.scm
+   ├── highlights.scm
+   ├── indents.scm
+   ├── injections.scm
+   └── locals.scm
 ```
 
 ## Development
@@ -251,12 +265,12 @@ This plugin follows a **filetype-based architecture**:
 ### TreeSitter Issues
 
 ```bash
-# Check parser status
-:KokaTSStatus
+# Check parser status (via nvim-treesitter)
+:TSInstall koka
 
 # Reinstall parser
-:KokaTSUninstall
-:KokaTSInstall
+:TSUninstall koka
+:TSInstall koka
 ```
 
 ### LSP Issues
@@ -266,24 +280,23 @@ This plugin follows a **filetype-based architecture**:
 :LspInfo
 
 # Start LSP server
-:KokaLsp start
+:Koka lsp start
 
 # Restart LSP server
-:KokaLsp restart
+:Koka lsp restart
 
 # Stop LSP server
-:KokaLsp stop
-
-# Check if Koka compiler is in PATH
-:!which koka
+:Koka lsp stop
 ```
 
 ### Execution Issues
 
 1. Ensure Koka compiler is installed and in PATH
-2. Check project configuration with `:KokaShowConfig`
+2. Check project configuration with `:Koka config`
 3. Verify LSP is running with `:LspInfo`
 4. For C target, ensure you have a C compiler installed
+5. For `wasm` target, ensure you have a WebAssembly runtime installed
+6. For `jsnode` target, ensure Node.js is installed and in PATH
 
 ## Contributing
 
@@ -298,12 +311,10 @@ This plugin follows a **filetype-based architecture**:
 
 This plugin wouldn't be possible without these open source projects:
 
-- [Tree Sitter Koka](https://github.com/koka-community/tree-sitter-koka) -
-  Provides Koka grammar for tree-sitter
-- [Koka Language](https://koka-lang.github.io/koka/) - The amazing functional
-  programming language
-- [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter) -
-  TreeSitter integration for Neovim
+- [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter)
+- [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig)
+- [Koka Language](https://koka-lang.github.io/koka/)
+- [tree-sitter-koka](https://github.com/koka-community/tree-sitter-koka)
 
 ## License
 
