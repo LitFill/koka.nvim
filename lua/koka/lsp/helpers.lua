@@ -6,8 +6,6 @@
 ---Breking changes to this module will not be reflected in the semantic versioning
 ---of this plugin.
 ---@brief ]]
-
----@class koka.lsp.Helpers
 local M = {}
 
 M.koka_client_name = 'koka'

@@ -6,12 +6,44 @@ local lsp_helpers = require('koka.lsp.helpers')
 
 local project = {}
 
+---Validate project configuration
+---@param config koka.project.Config
+---@return boolean ok True if valid, false otherwise
+---@return string|nil err Error message if invalid, nil if valid
+local function validate_config(config)
+  -- Validate target
+  local valid_targets = { c = true, c32 = true, c64c = true, wasm = true, jsnode = true }
+  if not valid_targets[config.target] then
+    vim.notify(
+      string.format(
+        'Koka project config: invalid target %s. Supported: c, c32, c64c, wasm, jsnode. Falling back to c',
+        config.target
+      ),
+      vim.log.levels.WARN
+    )
+    config.target = 'c'
+  end
+
+  -- Validate compiler_args is a table
+  if config.compiler_args and type(config.compiler_args) ~= 'table' then
+    return false, 'compiler_args must be a table'
+  end
+
+  -- Validate include_dirs is a table
+  if config.include_dirs and type(config.include_dirs) ~= 'table' then
+    return false, 'include_dirs must be a table'
+  end
+
+  return true, nil
+end
+
 ---@class koka.project.Config
 ---@field cwd? string Current working directory for compiler / running the output
 ---@field target string target (c,c32,c64c,wasm,jsnode)
 ---@field include_dirs string[] compiler include directories
 ---@field compiler_args string[] extra arguments to pass
 
+---Get project directory by looking for koka.json, .koka.json, or package.kk
 ---@param path string The directory to search upward from
 ---@param callback? fun(project_dir: string?, project_config: koka.project.Config?) If `nil`, this function runs synchronously
 ---@return string? project_dir (if `callback ~= nil` and successful)
@@ -197,6 +229,11 @@ function project.get_resolved_config(file_name, callback)
         end
         resolved.cwd = vim.fs.normalize(resolved.cwd)
       end
+      -- Validate the resolved config
+      local valid, err = validate_config(resolved)
+      if not valid then
+        vim.notify('Koka project config validation error: ' .. tostring(err), vim.log.levels.WARN)
+      end
       callback(resolved)
     end)
   else
@@ -214,6 +251,11 @@ function project.get_resolved_config(file_name, callback)
         resolved.cwd = vim.fs.joinpath(base_dir, resolved.cwd)
       end
       resolved.cwd = vim.fs.normalize(resolved.cwd)
+    end
+    -- Validate the resolved config
+    local valid, err = validate_config(resolved)
+    if not valid then
+      vim.notify('Koka project config validation error: ' .. tostring(err), vim.log.levels.WARN)
     end
     return resolved
   end
