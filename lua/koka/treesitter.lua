@@ -22,12 +22,19 @@ local function get_parser_configs()
   return parsers.get_parser_configs and parsers.get_parser_configs() or parsers
 end
 
----Install Koka TreeSitter parser
----@return nil
+---Install Koka TreeSitter parser if not already available
+---@return boolean success
 function M.install_parser()
   if not is_treesitter_available() then
     vim.notify('[koka.nvim] nvim-treesitter is required for TreeSitter support', vim.log.levels.ERROR)
     return false
+  end
+
+  -- Check if parser is already installed/available
+  local ok_parser, parser = pcall(require, 'nvim-treesitter.parsers')
+  if ok_parser and parser and parser.koka then
+    -- Parser already configured, skip
+    return true
   end
 
   local list = get_parser_configs()
@@ -54,6 +61,8 @@ function M.install_parser()
       }
     end,
   })
+
+  return true
 end
 
 return M
