@@ -171,7 +171,7 @@ function M.setup()
         -- Clear fallback virtual text lenses when LSP is active
         local ns_id = vim.api.nvim_create_namespace('koka_codelens')
         vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
-        vim.lsp.codelens.refresh { bufnr = bufnr }
+        vim.lsp.codelens.enable(true, { bufnr = bufnr })
       else
         -- Provide our own code lens display if no LSP
         M.display_custom_codelenses(bufnr)

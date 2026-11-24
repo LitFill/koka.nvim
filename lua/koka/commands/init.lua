@@ -160,7 +160,7 @@ local command_tbl = {
   refresh_codelens = {
     impl = function()
       local bufnr = vim.api.nvim_get_current_buf()
-      vim.lsp.codelens.refresh { bufnr = bufnr }
+      vim.lsp.codelens.enable(true, { bufnr = bufnr })
       -- Also refresh our custom code lenses
       require('koka.commands.codelens').display_custom_codelenses(bufnr)
       vim.notify('Code lenses refreshed', vim.log.levels.INFO)
