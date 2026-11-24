@@ -151,6 +151,27 @@ local command_tbl = {
       vim.notify('Code lenses refreshed', vim.log.levels.INFO)
     end,
   },
+
+  test = {
+    impl = function()
+      local bufnr = vim.api.nvim_get_current_buf()
+      local codelens = require('koka.commands.codelens')
+      local runnables = codelens.find_runnables and codelens.find_runnables(bufnr) or {}
+      local tests = {}
+      for _, runnable in ipairs(runnables) do
+        if runnable.type == 'test' then
+          table.insert(tests, runnable.name)
+        end
+      end
+      if #tests == 0 then
+        vim.notify('No test functions found in buffer', vim.log.levels.WARN)
+        return
+      end
+      local file_path = vim.api.nvim_buf_get_name(bufnr)
+      codelens._handle_run_command_fallback('test', file_path, tests[1])
+      vim.notify(string.format('Running test: %s (%d tests found)', tests[1], #tests), vim.log.levels.INFO)
+    end,
+  },
 }
 
 ---@param name string The name of the subcommand
@@ -224,31 +245,11 @@ local function koka_command_imp(opts)
   command.impl(args, opts)
 end
 
----@generic K,V
----@param predicate fun(value: V): boolean
----@param tbl table<K,V>
----@return K[]
-local function filter_keys(predicate, tbl)
-  local result = {}
-  for k, v in pairs(tbl) do
-    if predicate(v) then
-      table.insert(result, k)
-    end
-  end
-  return result
-end
-
 ---Setup Koka user commands
 function M.setup()
   vim.api.nvim_create_user_command('Koka', koka_command_imp, {
     nargs = '+',
     complete = function(arg_lead, cmdline, _)
-      local commands = cmdline:match("^['<,'>]*Koka!") ~= nil
-          and filter_keys(function(c)
-            return c.bang
-          end, command_tbl)
-        or vim.tbl_keys(command_tbl)
-
       local subcmd, subcmd_arg_lead = cmdline:match("^['<,'>]*Koka[!]*%s(%S+)%s(.*)$")
       if subcmd and subcmd_arg_lead and command_tbl[subcmd] and command_tbl[subcmd].complete then
         local complete = command_tbl[subcmd].complete
@@ -262,7 +263,7 @@ function M.setup()
       if cmdline:match("^['<,'>]*Koka[!]*%s+%w$") then
         return vim.tbl_filter(function(c)
           return c:find(arg_lead) ~= nil
-        end, commands)
+        end, vim.tbl_keys(command_tbl))
       end
     end,
     bang = false,
