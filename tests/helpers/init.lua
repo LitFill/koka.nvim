@@ -10,13 +10,7 @@ _G.vim = _G.vim or {}
 -- Get the absolute path to the test directory
 local function get_test_dir()
   local current_file = debug.getinfo(1, 'S').source:sub(2)
-  local test_dir = vim.fs.dirname(vim.fs.dirname(current_file))
-  -- Convert to absolute path if it's relative
-  if not test_dir:match('^/') then
-    -- Get absolute path by combining with current working directory
-    local cwd = vim.fn.getcwd and vim.fn.getcwd() or vim.uv.cwd()
-    test_dir = vim.fs.joinpath(cwd, test_dir)
-  end
+  local test_dir = vim.fs.dirname(current_file)
   return test_dir
 end
 
@@ -29,27 +23,23 @@ vim.notify = vim.notify or function(msg, level)
 end
 
 -- Mock vim.log
-vim.log = vim.log
-  or {
-    levels = {
-      ERROR = 'ERROR',
-      WARN = 'WARN',
-      INFO = 'INFO',
-      DEBUG = 'DEBUG',
-    },
-  }
+vim.log = vim.log or {
+  levels = {
+    DEBUG = 1,
+    INFO = 2,
+    WARN = 3,
+    ERROR = 4,
+  },
+}
 
 -- Mock vim.api functions
 vim.api = vim.api or {}
 vim.api.nvim_buf_get_name = vim.api.nvim_buf_get_name
   or function(bufnr)
     if bufnr == 42 then
-      return '/test/project/file.kk'
-    elseif bufnr == 0 then
-      return '/test/project/file.kk'
-    else
-      return '/test/path/test.kk'
+      return '/test/project/main.kk'
     end
+    return '/test/project/main.kk'
   end
 
 vim.api.nvim_get_current_buf = vim.api.nvim_get_current_buf or function()
@@ -106,6 +96,15 @@ vim.fn.has = vim.fn.has or function(feature)
   return 0
 end
 
+vim.fn.jobstart = vim.fn.jobstart
+  or function(_, opts)
+    -- Mock jobstart - call on_exit with success
+    if opts and opts.on_exit then
+      opts.on_exit(1, 0)
+    end
+    return 1
+  end
+
 -- Test helper functions for real project structures
 helpers.get_project_path = function(project_name)
   return vim.fs.joinpath(helpers.example_projects_dir, project_name)
@@ -124,49 +123,9 @@ end
 helpers.reset_mocks = function()
   -- Reset global state between tests
   _G.vim.g = {}
-
-  -- Reset vim.lsp mocks to original state
-  vim.lsp.get_active_clients = function(_)
-    return {}
-  end
-
-  vim.lsp.get_clients = function(_)
-    return {}
-  end
-
-  vim.lsp.start = function(_, _)
-    return 1 -- Return mock client id
-  end
-
-  vim.lsp.stop_client = function(_)
-    return true
-  end
-
-  vim.lsp.buf_attach_client = function(_, _)
-    return true
-  end
-
-  -- Reset vim.api mocks
-  vim.api.nvim_buf_get_name = function(bufnr)
-    if bufnr == 42 then
-      return '/test/project/file.kk'
-    elseif bufnr == 0 then
-      return '/test/project/file.kk'
-    else
-      return '/test/path/test.kk'
-    end
-  end
-
-  vim.api.nvim_get_current_buf = function()
-    return 0
-  end
-
-  -- Reset all koka modules
-  for k, _ in pairs(package.loaded) do
-    if k:match('^koka%.') then
-      package.loaded[k] = nil
-    end
-  end
+  package.loaded['koka.project'] = nil
+  package.loaded['koka.lsp'] = nil
+  package.loaded['koka.commands.codelens'] = nil
 end
 
 return helpers

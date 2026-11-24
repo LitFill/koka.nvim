@@ -129,14 +129,12 @@ function M._handle_run_command_fallback(action_type, file_path, func_name)
     -- Change to project directory
     local cwd = config.cwd or vim.fs.dirname(file_path)
 
-    -- Create terminal command
-    local term_cmd = table.concat(cmd, ' ')
     local title = string.format('Koka %s: %s', action_type, func_name)
 
-    -- Run in terminal (using vim.fn.termopen for better integration)
-    vim.cmd('tabnew')
-    vim.fn.termopen(term_cmd, {
+    -- Run in terminal using jobstart with argv list (handles spaces)
+    vim.fn.jobstart(cmd, {
       cwd = cwd,
+      term = true,
       on_exit = function(_, exit_code)
         if exit_code == 0 then
           vim.notify(string.format('✓ %s completed successfully', title), vim.log.levels.INFO)
@@ -145,7 +143,6 @@ function M._handle_run_command_fallback(action_type, file_path, func_name)
         end
       end,
     })
-    vim.cmd('startinsert')
   end)
 end
 
@@ -161,14 +158,19 @@ function M.setup()
     end
   end
 
+  local group = vim.api.nvim_create_augroup('koka_codelens', { clear = true })
+
   -- Auto-refresh code lenses for Koka files
-  vim.api.nvim_create_autocmd({ 'BufEnter', 'BufWritePost', 'CursorHold' }, {
+  vim.api.nvim_create_autocmd({ 'LspAttach', 'BufWritePost', 'InsertLeave' }, {
+    group = group,
     pattern = '*.kk',
     callback = function(args)
       local bufnr = args.buf
-      -- Only refresh if LSP client is active
       local clients = lsp_helpers.get_active_lsp_clients(bufnr)
       if #clients > 0 then
+        -- Clear fallback virtual text lenses when LSP is active
+        local ns_id = vim.api.nvim_create_namespace('koka_codelens')
+        vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
         vim.lsp.codelens.refresh { bufnr = bufnr }
       else
         -- Provide our own code lens display if no LSP

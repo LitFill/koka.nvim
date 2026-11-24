@@ -11,12 +11,26 @@ local project = {}
 ---@return boolean ok True if valid, false otherwise
 ---@return string|nil err Error message if invalid, nil if valid
 local function validate_config(config)
-  -- Validate target
-  local valid_targets = { c = true, c32 = true, c64c = true, wasm = true, jsnode = true }
+  -- Validate target (expanded to all current Koka targets)
+  local valid_targets = {
+    c = true,
+    c32 = true,
+    c64 = true,
+    c64c = true,
+    js = true,
+    jsnode = true,
+    jsweb = true,
+    wasm = true,
+    wasm32 = true,
+    wasm64 = true,
+    wasmjs = true,
+    wasmweb = true,
+    cs = true,
+  }
   if not valid_targets[config.target] then
     vim.notify(
       string.format(
-        'Koka project config: invalid target %s. Supported: c, c32, c64c, wasm, jsnode. Falling back to c',
+        'Koka project config: invalid target %s. Supported: c, c32, c64, c64c, js, jsnode, jsweb, wasm, wasm32, wasm64, wasmjs, wasmweb, cs. Falling back to c',
         config.target
       ),
       vim.log.levels.WARN
@@ -39,7 +53,7 @@ end
 
 ---@class koka.project.Config
 ---@field cwd? string Current working directory for compiler / running the output
----@field target string target (c,c32,c64c,wasm,jsnode)
+---@field target string target (c,c32,c64,c64c,js,jsnode,jsweb,wasm,wasm32,wasm64,wasmjs,wasmweb,cs)
 ---@field include_dirs string[] compiler include directories
 ---@field compiler_args string[] extra arguments to pass
 
@@ -75,7 +89,7 @@ local function get_project_config(path, callback)
       local content = file:read('*all')
       file:close()
 
-      local ok, config = pcall(vim.json.decode, content)
+      local ok, config = pcall(vim.json.decode, content, { luanil = { object = true, array = true } })
       if ok and config then
         project_config = config
         break
@@ -140,7 +154,8 @@ local function get_mb_active_client_root(file_name)
   for _, client in ipairs(clients) do
     if client.config.root_dir then
       local normalized_root_dir = vim.fs.normalize(client.config.root_dir)
-      if vim.startswith(normalized_file_name, normalized_root_dir) then
+      -- Use path separator-aware prefix match to avoid /a/foo matching /a/foobar
+      if vim.startswith(normalized_file_name .. '/', normalized_root_dir .. '/') then
         return normalized_root_dir
       end
     end

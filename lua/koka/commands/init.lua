@@ -51,13 +51,10 @@ function M.build_file(file_path)
     -- Change to project directory
     local cwd = config.cwd or vim.fs.dirname(file_path)
 
-    -- Create terminal command
-    local term_cmd = table.concat(cmd, ' ')
-
     -- Run in terminal
-    vim.cmd('tabnew')
-    vim.fn.termopen(term_cmd, {
+    vim.fn.jobstart(cmd, {
       cwd = cwd,
+      term = true,
       on_exit = function(_, exit_code)
         if exit_code == 0 then
           vim.notify('✓ Build completed successfully', vim.log.levels.INFO)
@@ -66,7 +63,6 @@ function M.build_file(file_path)
         end
       end,
     })
-    vim.cmd('startinsert')
   end)
 end
 
@@ -127,8 +123,27 @@ end
 ---@type table<string, koka.commands.Subcommand>
 local command_tbl = {
   run = {
-    impl = function()
-      require('koka.commands.codelens').run_at_cursor()
+    impl = function(args)
+      if #args > 0 then
+        local codelens = require('koka.commands.codelens')
+        local file_path = vim.api.nvim_buf_get_name(0)
+        codelens.handle_run_command('run', file_path, args[1])
+      else
+        require('koka.commands.codelens').run_at_cursor()
+      end
+    end,
+    complete = function(lead)
+      local bufnr = vim.api.nvim_get_current_buf()
+      local treesitter = require('koka.treesitter')
+      local runnables = treesitter.find_runnables(bufnr)
+      return vim.tbl_filter(
+        function(name)
+          return vim.startswith(name, lead)
+        end,
+        vim.tbl_map(function(r)
+          return r.name
+        end, runnables)
+      )
     end,
   },
   build = {
@@ -152,7 +167,7 @@ local command_tbl = {
     end,
   },
   test = {
-    impl = function()
+    impl = function(args)
       local bufnr = vim.api.nvim_get_current_buf()
       local treesitter = require('koka.treesitter')
       local runnables = treesitter.find_runnables(bufnr)
@@ -166,10 +181,27 @@ local command_tbl = {
         vim.notify('No test functions found in buffer', vim.log.levels.WARN)
         return
       end
+      local target = #args > 0 and args[1] or tests[1]
       local file_path = vim.api.nvim_buf_get_name(bufnr)
       local codelens = require('koka.commands.codelens')
-      codelens._handle_run_command_fallback('test', file_path, tests[1])
-      vim.notify(string.format('Running test: %s (%d tests found)', tests[1], #tests), vim.log.levels.INFO)
+      codelens.handle_run_command('test', file_path, target)
+      vim.notify(string.format('Running test: %s (%d tests found)', target, #tests), vim.log.levels.INFO)
+    end,
+    complete = function(lead)
+      local bufnr = vim.api.nvim_get_current_buf()
+      local treesitter = require('koka.treesitter')
+      local runnables = treesitter.find_runnables(bufnr)
+      local tests = vim.tbl_filter(function(r)
+        return r.type == 'test'
+      end, runnables)
+      return vim.tbl_filter(
+        function(name)
+          return vim.startswith(name, lead)
+        end,
+        vim.tbl_map(function(r)
+          return r.name
+        end, tests)
+      )
     end,
   },
 }
@@ -199,13 +231,9 @@ Available subcommands:
         return subcmd_tbl[subcmd].complete(next_arg_lead)
       end
       if subcmd_arg_lead and subcmd_arg_lead ~= '' then
-        return vim
-          .iter(subcmd_tbl)
-          ---@param subcmd_name string
-          :filter(function(subcmd_name)
-            return subcmd_name:find(subcmd_arg_lead) ~= nil
-          end)
-          :totable()
+        return vim.tbl_filter(function(n)
+          return vim.startswith(n, subcmd_arg_lead)
+        end, vim.tbl_keys(subcmd_tbl))
       end
       return vim.tbl_keys(subcmd_tbl)
     end,
@@ -239,7 +267,7 @@ local function koka_command_imp(opts)
   local args = #fargs > 1 and vim.list_slice(fargs, 2) or {}
   local command = command_tbl[cmd]
   if not command then
-    vim.notify(string.format('[koka.nvim] Unknown command: %s form :Koka', cmd), vim.log.levels.ERROR)
+    vim.notify(string.format('[koka.nvim] Unknown command: %s for :Koka', cmd), vim.log.levels.ERROR)
     return
   end
   command.impl(args, opts)
@@ -255,29 +283,15 @@ function M.setup()
         local complete = command_tbl[subcmd].complete
         if type(complete) == 'table' then
           return vim.tbl_filter(function(c)
-            return c:find(subcmd_arg_lead) ~= nil
+            return vim.startswith(c, subcmd_arg_lead)
           end, complete)
         end
         return complete and complete(subcmd_arg_lead) or {}
       end
-      if cmdline:match("^['<,'>]*Koka[!]*%s+%w$") then
+      if cmdline:match("^['<,'>]*Koka[!]*%s+%S*$") then
         return vim.tbl_filter(function(c)
-          return c:find(arg_lead) ~= nil
+          return vim.startswith(c, arg_lead)
         end, vim.tbl_keys(command_tbl))
-      end
-      -- Completion for run/test arguments
-      if subcmd == 'run' or subcmd == 'test' then
-        local bufnr = vim.api.nvim_get_current_buf()
-        local treesitter = require('koka.treesitter')
-        local runnables = treesitter.find_runnables(bufnr)
-        return vim.tbl_filter(
-          function(name)
-            return name:find(subcmd_arg_lead) ~= nil
-          end,
-          vim.tbl_map(function(r)
-            return r.name
-          end, runnables)
-        )
       end
     end,
     bang = false,

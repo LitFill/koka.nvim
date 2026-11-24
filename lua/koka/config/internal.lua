@@ -18,7 +18,7 @@ local KokaDefaultConfig = {
   },
 }
 
-local kokanvim = vim.g.kokanvim or {}
+local kokanvim = vim.g.koka or {}
 ---@type koka.Opts
 local opts = type(kokanvim) == 'function' and kokanvim() or kokanvim
 

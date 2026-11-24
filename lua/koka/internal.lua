@@ -7,9 +7,11 @@ local M = {}
 local function start_or_attach()
   local Types = require('koka.types.internal')
   if Types.evaluate(KokaConfig.lsp.auto_attach) then
-    local ok = pcall(require, 'koka.lsp').start
-    if not ok then
-      vim.notify('Koka LSP failed to start', vim.log.levels.ERROR)
+    local ok, lsp = pcall(require, 'koka.lsp')
+    if ok then
+      lsp.start()
+    else
+      vim.notify('Koka LSP failed to load: ' .. tostring(lsp), vim.log.levels.ERROR)
     end
   end
 end

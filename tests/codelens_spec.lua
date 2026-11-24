@@ -130,26 +130,19 @@ describe('koka.commands.codelens', function()
       local executed_cmd = nil
       local executed_cwd = nil
 
-      -- Mock termopen
-      vim.fn.termopen = function(cmd, opts)
-        executed_cmd = cmd
+      -- Mock jobstart
+      vim.fn.jobstart = function(cmd, opts)
+        executed_cmd = table.concat(cmd, ' ')
         executed_cwd = opts.cwd
+        if opts.on_exit then
+          opts.on_exit(1, 0)
+        end
         return 1
       end
 
-      -- Mock vim.cmd for tabnew and startinsert
-      local tabnew_called = false
-      local startinsert_called = false
+      -- Mock vim.cmd
       local original_cmd = vim.cmd
-      vim.cmd = function(cmd)
-        if cmd == 'tabnew' then
-          tabnew_called = true
-        elseif cmd == 'startinsert' then
-          startinsert_called = true
-        else
-          original_cmd(cmd)
-        end
-      end
+      vim.cmd = function() end
 
       -- Mock project configuration
       package.loaded['koka.project'] = {
@@ -165,8 +158,6 @@ describe('koka.commands.codelens', function()
 
       codelens.handle_run_command('run', '/test/project/main.kk', 'main')
 
-      assert.is_true(tabnew_called)
-      assert.is_true(startinsert_called)
       assert.equal('/test/project', executed_cwd)
       assert.is_not_nil(executed_cmd)
       assert.is_not_nil(executed_cmd and executed_cmd:match('koka'))

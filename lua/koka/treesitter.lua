@@ -15,15 +15,15 @@ end
 ---Check if parser is installed
 ---@return boolean
 function M.is_parser_installed()
-  local ok = pcall(vim.treesitter.language.add, 'koka')
-  return ok
+  local has_parser = #vim.api.nvim_get_runtime_file('parser/koka.*', false) > 0
+  return has_parser
 end
 
 ---Install Koka TreeSitter parser
 ---@return boolean success
 function M.install_parser()
   if not M.is_available() then
-    vim.notify('[koka.nvim] nvim-treesitter is required for TreeSitter support', vim.log.levels.ERROR)
+    vim.notify('[koka.nvim] nvim-treesitter is required for TreeSitter support', vim.log.levels.DEBUG)
     return false
   end
 
@@ -69,7 +69,6 @@ function M.find_runnables(bufnr)
   -- Try to use TreeSitter if available
   local has_parser, parser = pcall(vim.treesitter.get_parser, bufnr, 'koka')
   if not has_parser or not parser then
-    -- Fallback to regex
     return M._find_runnables_fallback(bufnr)
   end
 
@@ -79,22 +78,25 @@ function M.find_runnables(bufnr)
   end
 
   local root = tree:root()
-  local query = vim.treesitter.query.parse(
+  local ok, query = pcall(
+    vim.treesitter.query.parse,
     'koka',
     [[
-      (fundecl
-        (identifier) @func.name
-        (#match? @func.name "^(main|test.*|example.*)$")
-      ) @func
-    ]]
+    (fundecl
+      (identifier) @func.name
+      (#match? @func.name "^(main|test.*|example.*)$")
+    ) @func
+  ]]
   )
+  if not ok then
+    return M._find_runnables_fallback(bufnr)
+  end
 
   local runnables = {}
   for id, node in query:iter_captures(root, bufnr, 0, -1) do
-    local name_node = query.captures[id]
-    if name_node and vim.treesitter.get_node_text(name_node, bufnr) then
-      local func_name = vim.treesitter.get_node_text(name_node, bufnr)
-      local start_row, start_col = node:range()
+    if query.captures[id] == 'func.name' then
+      local func_name = vim.treesitter.get_node_text(node, bufnr)
+      local row, col = node:range()
 
       local func_type = 'run'
       if func_name:match('^test') then
@@ -104,8 +106,8 @@ function M.find_runnables(bufnr)
       end
 
       table.insert(runnables, {
-        line = start_row,
-        col = start_col,
+        line = row,
+        col = col,
         name = func_name,
         type = func_type,
       })
@@ -130,7 +132,7 @@ function M._find_runnables_fallback(bufnr)
 
   for line_nr, line in ipairs(lines) do
     local pub_match = has_module and line:match('^%s*pub%s+fun%s+([%w%-]+)%s*%(')
-      or line:match('^%s*pub%s*fun%s+([%w%-]+)%s*%(')
+      or line:match('^%s*pub%s+fun%s+([%w%-]+)%s*%(')
     local fun_match = not has_module and line:match('^%s*fun%s+([%w%-]+)%s*%(')
 
     local func_name = pub_match or fun_match
@@ -145,7 +147,7 @@ function M._find_runnables_fallback(bufnr)
       end
 
       if func_type then
-        local col = line:find(func_name) or 1
+        local col = line:find(func_name, 1, true) or 1
         table.insert(runnables, {
           line = line_nr - 1,
           col = col - 1,

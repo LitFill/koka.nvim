@@ -24,14 +24,11 @@
 local M = {}
 
 ---@type koka.Opts | fun():koka.Opts | nil
-vim.g.kokanvim = vim.g.kokanvim
+vim.g.koka = vim.g.koka
 
 ---@class koka.Opts
 ---
 ---@field lsp? koka.lsp.ClientOpts
----The buffer from which the executor was invoked
----@field bufnr? integer
----@field env? table<string, string>
 
 ---@class koka.lsp.ClientOpts
 ---

@@ -30,19 +30,8 @@ M.start = function(bufnr)
   local lsp_start_config = vim.tbl_deep_extend('force', config.lsp, kk_config) --[[@as koka.lsp.StartConfig]]
 
   project.get_resolved_config(bufname, function(project_config)
-    if not project_config.cwd then
-      vim.notify(
-        [[
-kokanvim:
-No project root found.
-        ]],
-        vim.log.levels.INFO
-      )
-      project_config.cwd = vim.fs.dirname(bufname)
-    end
-
     -- Normalize paths for consistent comparison
-    local normalized_cwd = vim.fs.normalize(project_config.cwd)
+    local normalized_cwd = vim.fs.normalize(project_config.cwd or vim.fs.dirname(bufname))
     lsp_start_config.root_dir = normalized_cwd
     lsp_start_config.settings = type(lsp_start_config.settings) == 'function'
         and lsp_start_config.settings(normalized_cwd)
@@ -50,14 +39,14 @@ No project root found.
     lsp_start_config.cmd = lsp_helpers.get_lsp_cmd(project_config)
     lsp_start_config.name = lsp_helpers.koka_client_name
     lsp_start_config.filetypes = { 'koka' }
-    if config.lsp.on_attach then
-      local original_on_attach = lsp_start_config.on_attach
-      lsp_start_config.on_attach = function(client, buf)
-        if original_on_attach then
-          original_on_attach(client, buf)
-        end
-        config.lsp.on_attach(client, buf)
+
+    -- Wire user on_attach without double-calling config.lsp.on_attach
+    local user_on_attach = kk_config.on_attach
+    lsp_start_config.on_attach = function(client, buf)
+      if user_on_attach then
+        user_on_attach(client, buf)
       end
+      config.lsp.on_attach(client, buf)
     end
 
     -- Check if client is already running
@@ -92,7 +81,7 @@ M.stop = function(bufnr)
   local clients = lsp_helpers.get_active_lsp_clients(bufnr)
 
   for _, client in ipairs(clients) do
-    vim.lsp.stop_client(client.id)
+    client:stop()
   end
 end
 
@@ -100,12 +89,30 @@ end
 ---@param bufnr? number The buffer number (optional), default to the current buffer
 M.restart = function(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
-  M.stop(bufnr)
+  local clients = lsp_helpers.get_active_lsp_clients(bufnr)
 
-  -- Small delay to ensure client is fully stopped
-  vim.defer_fn(function()
+  if #clients == 0 then
     M.start(bufnr)
-  end, 100)
+    return
+  end
+
+  -- Wait for all clients to detach before starting again
+  local remaining = #clients
+  for _, client in ipairs(clients) do
+    local on_exit = client.on_exit
+    client.on_exit = function(...)
+      if on_exit then
+        on_exit(...)
+      end
+      remaining = remaining - 1
+      if remaining == 0 then
+        vim.schedule(function()
+          M.start(bufnr)
+        end)
+      end
+    end
+    client:stop()
+  end
 end
 
 ---Get LSP client status for the current buffer

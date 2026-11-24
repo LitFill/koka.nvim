@@ -21,6 +21,16 @@ function M.execute(client, project_config, args, callback)
   local target = project_config.target or 'c'
   local additional_args = '--buildtag=nvim --target=' .. target
 
+  -- Append include_dirs and compiler_args from project_config (bug fix: was ignoring them)
+  if project_config.include_dirs then
+    for _, include_dir in ipairs(project_config.include_dirs) do
+      additional_args = additional_args .. ' --include=' .. include_dir
+    end
+  end
+  if project_config.compiler_args then
+    additional_args = additional_args .. ' ' .. table.concat(project_config.compiler_args, ' ')
+  end
+
   if args.compiler_args then
     additional_args = additional_args .. ' ' .. table.concat(args.compiler_args, ' ')
   end
@@ -36,7 +46,7 @@ function M.execute(client, project_config, args, callback)
 
   -- Send LSP command request
   ---@diagnostic disable-next-line: param-type-mismatch
-  client.request('workspace/executeCommand', {
+  client:request('workspace/executeCommand', {
     command = command_name,
     arguments = command_args,
     ---@diagnostic disable-next-line: param-type-mismatch
@@ -58,7 +68,13 @@ function M.execute(client, project_config, args, callback)
     end
 
     local output_path = result
-    local full_path = vim.fs.joinpath(project_config.cwd, output_path)
+    -- Handle absolute paths correctly (bug fix: was blindly joining with cwd)
+    local full_path
+    if vim.startswith(output_path, '/') or vim.startswith(output_path, '%a:') then
+      full_path = output_path
+    else
+      full_path = vim.fs.joinpath(project_config.cwd or vim.fs.dirname(args.program), output_path)
+    end
 
     -- Check if the generated file exists
     if vim.fn.filereadable(full_path) == 0 then
@@ -100,11 +116,12 @@ function M._run_generated_code(target, executable_path, program_args, cwd, callb
     return
   end
 
-  -- Create a new terminal tab for execution
+  -- Create a new terminal tab for execution using jobstart argv (handles spaces)
   vim.cmd('tabnew')
-  local term_cmd = cmd .. ' ' .. table.concat(cmd_args, ' ')
-  vim.fn.termopen(term_cmd, {
+  local full_cmd = vim.list_extend({ cmd }, cmd_args)
+  vim.fn.jobstart(full_cmd, {
     cwd = cwd,
+    term = true,
     on_exit = function(_, exit_code)
       if exit_code == 0 then
         vim.notify('✓ Execution completed successfully', vim.log.levels.INFO)
@@ -116,8 +133,6 @@ function M._run_generated_code(target, executable_path, program_args, cwd, callb
       end
     end,
   })
-
-  vim.cmd('startinsert')
 end
 
 ---Compile and run a specific function
