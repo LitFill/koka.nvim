@@ -164,9 +164,12 @@ function M._handle_run_command_fallback(action_type, file_path, func_name)
       end
     end
 
-    -- Add execute flag with file
+    -- Add execute flag with file and optional entrypoint
     table.insert(cmd, '-e')
     table.insert(cmd, file_path)
+    if func_name ~= 'main' then
+      table.insert(cmd, '--main-entry=' .. func_name)
+    end
 
     -- Change to project directory
     local cwd = config.cwd or vim.fs.dirname(file_path)
