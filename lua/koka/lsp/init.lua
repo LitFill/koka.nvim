@@ -50,6 +50,15 @@ No project root found.
     lsp_start_config.cmd = lsp_helpers.get_lsp_cmd(project_config)
     lsp_start_config.name = lsp_helpers.koka_client_name
     lsp_start_config.filetypes = { 'koka' }
+    if config.lsp.on_attach then
+      local original_on_attach = lsp_start_config.on_attach
+      lsp_start_config.on_attach = function(client, buf)
+        if original_on_attach then
+          original_on_attach(client, buf)
+        end
+        config.lsp.on_attach(client, buf)
+      end
+    end
 
     -- Check if client is already running
     local clients = lsp_helpers.get_active_lsp_clients()

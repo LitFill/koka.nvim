@@ -142,6 +142,47 @@ local command_tbl = {
       M.show_config()
     end,
   },
+  format = {
+    impl = function()
+      local file_path = vim.api.nvim_buf_get_name(0)
+      if file_path == '' then
+        vim.notify('No file to format', vim.log.levels.WARN)
+        return
+      end
+      local project = require('koka.project')
+      project.get_resolved_config(file_path, function(config)
+        local cmd = { 'koka', '--format', file_path }
+        if config.target and config.target ~= 'c' then
+          table.insert(cmd, 2, '--target=' .. config.target)
+        end
+        if config.include_dirs then
+          for _, include_dir in ipairs(config.include_dirs) do
+            table.insert(cmd, '--include=' .. include_dir)
+          end
+        end
+        if config.compiler_args then
+          for _, arg in ipairs(config.compiler_args) do
+            table.insert(cmd, arg)
+          end
+        end
+
+        local term_cmd = table.concat(cmd, ' ')
+        vim.cmd('tabnew')
+        vim.fn.termopen(term_cmd, {
+          cwd = config.cwd or vim.fs.dirname(file_path),
+          on_exit = function(_, exit_code)
+            if exit_code == 0 then
+              vim.notify('✓ Format completed successfully', vim.log.levels.INFO)
+              vim.cmd('checktime')
+            else
+              vim.notify(string.format('✗ Format failed with exit code %d', exit_code), vim.log.levels.ERROR)
+            end
+          end,
+        })
+        vim.cmd('startinsert')
+      end)
+    end,
+  },
   refresh_codelens = {
     impl = function()
       local bufnr = vim.api.nvim_get_current_buf()
@@ -151,12 +192,11 @@ local command_tbl = {
       vim.notify('Code lenses refreshed', vim.log.levels.INFO)
     end,
   },
-
   test = {
     impl = function()
       local bufnr = vim.api.nvim_get_current_buf()
-      local codelens = require('koka.commands.codelens')
-      local runnables = codelens.find_runnables and codelens.find_runnables(bufnr) or {}
+      local treesitter = require('koka.treesitter')
+      local runnables = treesitter.find_runnables(bufnr)
       local tests = {}
       for _, runnable in ipairs(runnables) do
         if runnable.type == 'test' then
@@ -168,6 +208,7 @@ local command_tbl = {
         return
       end
       local file_path = vim.api.nvim_buf_get_name(bufnr)
+      local codelens = require('koka.commands.codelens')
       codelens._handle_run_command_fallback('test', file_path, tests[1])
       vim.notify(string.format('Running test: %s (%d tests found)', tests[1], #tests), vim.log.levels.INFO)
     end,
@@ -264,6 +305,20 @@ function M.setup()
         return vim.tbl_filter(function(c)
           return c:find(arg_lead) ~= nil
         end, vim.tbl_keys(command_tbl))
+      end
+      -- Completion for run/test arguments
+      if subcmd == 'run' or subcmd == 'test' then
+        local bufnr = vim.api.nvim_get_current_buf()
+        local treesitter = require('koka.treesitter')
+        local runnables = treesitter.find_runnables(bufnr)
+        return vim.tbl_filter(
+          function(name)
+            return name:find(subcmd_arg_lead) ~= nil
+          end,
+          vim.tbl_map(function(r)
+            return r.name
+          end, runnables)
+        )
       end
     end,
     bang = false,

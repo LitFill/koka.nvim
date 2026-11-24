@@ -5,57 +5,12 @@
 
 local M = {}
 
----Check if buffer has module declaration
----@param bufnr number
----@return boolean
-local function has_module_declaration(bufnr)
-  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-  for _, line in ipairs(lines) do
-    if line:match('^%s*module%s+') then
-      return true
-    end
-  end
-  return false
-end
-
----Find runnable functions in buffer
+---Find runnable functions in buffer using TreeSitter
 ---@param bufnr number
 ---@return table[] runnables Array of {line, col, name, type}
 local function find_runnables(bufnr)
-  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-  local has_module = has_module_declaration(bufnr)
-  local runnables = {}
-
-  for line_nr, line in ipairs(lines) do
-    -- Match function declarations
-    local pub_match = has_module and line:match('^%s*pub%s+fun%s+([%w%-]+)%s*%(')
-      or line:match('^%s*pub%s*fun%s+([%w%-]+)%s*%(')
-    local fun_match = not has_module and line:match('^%s*fun%s+([%w%-]+)%s*%(')
-
-    local func_name = pub_match or fun_match
-    if func_name then
-      local func_type = nil
-      if func_name == 'main' then
-        func_type = 'run'
-      elseif func_name:match('^test') then
-        func_type = 'test'
-      elseif func_name:match('^example') then
-        func_type = 'example'
-      end
-
-      if func_type then
-        local col = line:find(func_name) or 1
-        table.insert(runnables, {
-          line = line_nr - 1, -- 0-indexed for LSP
-          col = col - 1, -- 0-indexed for LSP
-          name = func_name,
-          type = func_type,
-        })
-      end
-    end
-  end
-
-  return runnables
+  local treesitter = require('koka.treesitter')
+  return treesitter.find_runnables(bufnr)
 end
 
 ---Create code lens for runnable function
