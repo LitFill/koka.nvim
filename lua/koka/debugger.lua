@@ -183,7 +183,7 @@ function M._module_name(lines, program_path)
   return (base:gsub('%.kk$', ''))
 end
 
----Build the wrapper source: the buffer text plus a main that prints the call.
+---Build the wrapper source: the buffer text plus an entry that prints the call.
 ---@param lines string[] The buffer lines
 ---@param func_name string Name of the total function
 ---@param args_text string Comma-separated literal arguments
@@ -192,7 +192,7 @@ function M._build_wrapper(lines, func_name, args_text)
   local wrapper = {}
   vim.list_extend(wrapper, lines)
   wrapper[#wrapper + 1] = ''
-  wrapper[#wrapper + 1] = string.format('fun main() { println(%s(%s)) }', func_name, args_text)
+  wrapper[#wrapper + 1] = string.format('fun kokaInlayEntry() { println(%s(%s)) }', func_name, args_text)
   return wrapper
 end
 
@@ -230,6 +230,7 @@ function M.eval_total(project_config, program_path, lines, func_name, args_text,
   end
   table.insert(cmd, '-e')
   table.insert(cmd, tmp_file)
+  table.insert(cmd, '--main-entry=kokaInlayEntry')
 
   local cwd = project_config.cwd or orig_dir
   local out = {}
@@ -260,7 +261,8 @@ function M.eval_total(project_config, program_path, lines, func_name, args_text,
         finish(nil)
         return
       end
-      local text = table.concat(out, '\n'):gsub('^%s+', ''):gsub('%s+$', '')
+      -- koka prints load/parse/check lines to stdout. The result is the last line.
+      local text = table.concat(out, '\n'):match('([^\n]+)%s*$') or ''
       if text == '' then
         finish(nil)
         return

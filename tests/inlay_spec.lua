@@ -89,3 +89,61 @@ describe('koka.treesitter inlay helpers', function()
     end)
   end)
 end)
+
+describe('koka.debugger eval_total', function()
+  local saved = {}
+
+  local function mock_fn(name, fn)
+    saved[name] = vim.fn[name]
+    vim.fn[name] = fn
+  end
+
+  after_each(function()
+    for name, val in pairs(saved) do
+      vim.fn[name] = val
+    end
+    saved = {}
+    package.loaded['koka.debugger'] = nil
+  end)
+
+  it('uses a unique entry and returns the last stdout line', function()
+    local captured_cmd
+    local captured_wrapper
+    mock_fn('tempname', function()
+      return '/tmp/koka_inlay_spec'
+    end)
+    mock_fn('mkdir', function()
+      return 0
+    end)
+    mock_fn('writefile', function(lines)
+      captured_wrapper = table.concat(lines, '\n')
+    end)
+    mock_fn('jobstop', function() end)
+    mock_fn('delete', function() end)
+    mock_fn('jobstart', function(cmd, opts)
+      captured_cmd = cmd
+      opts.on_stdout(1, { 'load    : std/core', 'parse   : main.kk', 'check   : main', '3' })
+      opts.on_exit(1, 0)
+      return 1
+    end)
+
+    package.loaded['koka.debugger'] = nil
+    local debugger = require('koka.debugger')
+
+    local got
+    debugger.eval_total(
+      { target = 'c', cwd = '/tmp' },
+      '/tmp/main.kk',
+      { 'fun add(a: int, b: int): total int { a + b }', 'fun main() { println("hi") }' },
+      'add',
+      '1, 2',
+      function(result)
+        got = result
+      end
+    )
+
+    assert.equal('3', got)
+    assert.is_not_nil(table.concat(captured_cmd, ' '):find('--main-entry=kokaInlayEntry', 1, true))
+    assert.is_not_nil(captured_wrapper:match('fun kokaInlayEntry%(%)'))
+  end)
+end)
