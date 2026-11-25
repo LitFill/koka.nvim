@@ -18,7 +18,7 @@ local state = {}
 local function ensure_state(bufnr)
   local s = state[bufnr]
   if not s then
-    s = { gen = 0, cache = {} }
+    s = { gen = 0, cache = {}, tick = 0 }
     state[bufnr] = s
   end
   return s
@@ -84,6 +84,11 @@ function M.refresh(bufnr)
   end
 
   local s = ensure_state(bufnr)
+  local tick = vim.api.nvim_buf_get_changedtick(bufnr)
+  if s.tick ~= tick then
+    s.cache = {}
+    s.tick = tick
+  end
   s.gen = s.gen + 1
   local gen = s.gen
   M.clear(bufnr)

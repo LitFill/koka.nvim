@@ -45,15 +45,15 @@ describe('koka.treesitter inlay helpers', function()
   end)
 
   describe('find_total_calls', function()
-    it('finds calls whose arguments are all literals', function()
+    it('finds a call with literal arguments', function()
       local bufnr = vim.api.nvim_create_buf(false, true)
       local lines = {
         'fun add(a: int, b: int): total int { a + b }',
         'fun twice(x: int): int { x * 2 }',
         'fun main() {',
         '  val x = 10',
-        '  println(add(1, 2))',
-        '  println(twice(x))',
+        '  val a = add(1, 2)',
+        '  val b = twice(x)',
         '}',
       }
       vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
@@ -74,7 +74,45 @@ describe('koka.treesitter inlay helpers', function()
       assert.is_false(found_twice)
     end)
 
-    it('returns an empty list when there are no literal calls', function()
+    it('finds a zero-argument call', function()
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      local lines = {
+        'fun example() { 33 + 34 }',
+        'fun main() {',
+        '  val y = example()',
+        '}',
+      }
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+
+      local calls = treesitter.find_total_calls(bufnr)
+
+      local found = false
+      for _, call in ipairs(calls) do
+        if call.func_name == 'example' and call.args_text == '' then
+          found = true
+        end
+      end
+      assert.is_true(found)
+    end)
+
+    it('evaluates the outer nested call only', function()
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      local lines = {
+        'fun add(a: int, b: int): total int { a + b }',
+        'fun main() {',
+        '  val x = add(add(11, 22), add(33, 1))',
+        '}',
+      }
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+
+      local calls = treesitter.find_total_calls(bufnr)
+
+      assert.equal(1, #calls)
+      assert.equal('add', calls[1].func_name)
+      assert.equal('add(11, 22), add(33, 1)', calls[1].args_text)
+    end)
+
+    it('returns an empty list when there are no static calls', function()
       local bufnr = vim.api.nvim_create_buf(false, true)
       local lines = {
         'fun main() {',

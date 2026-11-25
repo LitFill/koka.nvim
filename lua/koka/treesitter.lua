@@ -240,28 +240,102 @@ function M.is_literal_arg(text)
   return false
 end
 
----Try to read one opexpr/ntlexpr node as a simple call with literal arguments.
+---Forward declarations for static-argument analysis.
+local is_static, is_static_call
+
+---Check if a node is static: a literal, or a call whose arguments are static.
+---@param node TSNode
+---@param bufnr number
+---@return boolean
+is_static = function(node, bufnr)
+  local t = node:type()
+  if t == 'int' or t == 'float' or t == 'char' or t == 'string' then
+    return true
+  end
+  if t == 'opexpr' or t == 'ntlexpr' then
+    if vim.treesitter.get_node_text(node, bufnr):sub(-1) == ')' then
+      return is_static_call(node, bufnr)
+    end
+  end
+  if node:named_child_count() == 1 then
+    return is_static(node:named_child(0), bufnr)
+  end
+  return false
+end
+
+---Check if a node is a call whose arguments are all static.
+---@param node TSNode
+---@param bufnr number
+---@return boolean
+is_static_call = function(node, bufnr)
+  if vim.treesitter.get_node_text(node, bufnr):sub(-1) ~= ')' then
+    return false
+  end
+  local atom, args
+  for i = 0, node:named_child_count() - 1 do
+    local c = node:named_child(i)
+    local ct = c:type()
+    if ct == 'atom' then
+      if atom then
+        return false
+      end
+      atom = c
+    elseif ct == 'arguments' then
+      if args then
+        return false
+      end
+      args = c
+    else
+      return false
+    end
+  end
+  if not atom then
+    return false
+  end
+  local name_node = atom:named_child(0)
+  if not name_node or name_node:type() ~= 'name' then
+    return false
+  end
+  if args then
+    for i = 0, args:named_child_count() - 1 do
+      if not is_static(args:named_child(i), bufnr) then
+        return false
+      end
+    end
+  end
+  return true
+end
+
+---Try to read one opexpr/ntlexpr node as a call with static arguments.
+---A call has an atom name and an optional arguments list, and ends with ')'.
+---A zero-argument call has only the atom.
 ---@param node TSNode The candidate node
 ---@param bufnr number The buffer
 ---@return table? call {line, col, func_name, args_text, key}, or nil
 function M._try_call(node, bufnr)
-  -- A simple call has exactly two named children: the atom and the arguments.
-  if node:named_child_count() ~= 2 then
+  local count = node:named_child_count()
+  if count ~= 1 and count ~= 2 then
     return nil
   end
+
   local atom = node:named_child(0)
-  local call_args = node:named_child(1)
-  if atom:type() ~= 'atom' or call_args:type() ~= 'arguments' then
+  if atom:type() ~= 'atom' then
     return nil
+  end
+
+  local call_args
+  if count == 2 then
+    call_args = node:named_child(1)
+    if call_args:type() ~= 'arguments' then
+      return nil
+    end
   end
 
   -- A call ends with ')'. An index ends with ']'. Reject the index.
-  local node_text = vim.treesitter.get_node_text(node, bufnr)
-  if node_text:sub(-1) ~= ')' then
+  if vim.treesitter.get_node_text(node, bufnr):sub(-1) ~= ')' then
     return nil
   end
 
-  -- The atom must be a plain name, not a literal or constructor.
   local name_node = atom:named_child(0)
   if not name_node or name_node:type() ~= 'name' then
     return nil
@@ -275,24 +349,16 @@ function M._try_call(node, bufnr)
     return nil
   end
 
-  -- Every argument must be a literal.
-  local arg_texts = {}
-  for i = 0, call_args:named_child_count() - 1 do
-    local arg = call_args:named_child(i)
-    if arg:type() ~= 'argument' then
-      return nil
+  local args_text = ''
+  if call_args then
+    for i = 0, call_args:named_child_count() - 1 do
+      if not is_static(call_args:named_child(i), bufnr) then
+        return nil
+      end
     end
-    local txt = vim.treesitter.get_node_text(arg, bufnr)
-    if not M.is_literal_arg(txt) then
-      return nil
-    end
-    arg_texts[#arg_texts + 1] = txt
-  end
-  if #arg_texts == 0 then
-    return nil
+    args_text = vim.treesitter.get_node_text(call_args, bufnr)
   end
 
-  local args_text = table.concat(arg_texts, ', ')
   local row, col = node:end_()
   return {
     line = row,
@@ -311,19 +377,24 @@ function M._find_total_calls_fallback(bufnr)
   local results = {}
   for idx, line in ipairs(lines) do
     for fname, args in line:gmatch('([%w_]+)%(([^%(%)]*)%)') do
+      local ok = true
       local parts = {}
-      local all_lit = args ~= ''
-      for part in (args .. ','):gmatch('(.-),') do
-        part = part:gsub('^%s+', ''):gsub('%s+$', '')
-        if part ~= '' then
-          if not M.is_literal_arg(part) then
-            all_lit = false
-            break
+      if args ~= '' then
+        for part in (args .. ','):gmatch('(.-),') do
+          part = part:gsub('^%s+', ''):gsub('%s+$', '')
+          if part ~= '' then
+            if not M.is_literal_arg(part) then
+              ok = false
+              break
+            end
+            parts[#parts + 1] = part
           end
-          parts[#parts + 1] = part
+        end
+        if #parts == 0 then
+          ok = false
         end
       end
-      if all_lit and #parts > 0 then
+      if ok then
         local args_text = table.concat(parts, ', ')
         results[#results + 1] = {
           line = idx - 1,
@@ -366,6 +437,7 @@ function M.find_total_calls(bufnr)
       local r = M._try_call(node, bufnr)
       if r then
         results[#results + 1] = r
+        return
       end
     end
     for i = 0, node:named_child_count() - 1 do
