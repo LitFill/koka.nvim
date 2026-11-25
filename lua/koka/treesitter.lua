@@ -349,6 +349,11 @@ function M._try_call(node, bufnr)
     return nil
   end
 
+  -- Skip effectful output builtins. Evaluate the inner total call instead.
+  if func_name == 'println' or func_name == 'print' then
+    return nil
+  end
+
   local args_text = ''
   if call_args then
     for i = 0, call_args:named_child_count() - 1 do
