@@ -47,34 +47,11 @@ function M.render_one(bufnr, call, text)
   })
 end
 
----Run one call and draw its hint. Skip when the result is already cached.
----@param bufnr number
----@param s table The buffer state
----@param call table The call
----@param proj koka.project.Config The project config
----@param lines string[] The buffer lines
----@param path string The buffer path
----@param gen number The current generation token
-local function eval_and_render(bufnr, s, call, proj, lines, path, gen)
-  local cached = s.cache[call.key]
-  if cached then
-    M.render_one(bufnr, call, cached)
-    return
-  end
-  debugger.eval_total(proj, path, lines, call.func_name, call.args_text, function(text)
-    if gen ~= s.gen then
-      return
-    end
-    if text then
-      s.cache[call.key] = text
-      M.render_one(bufnr, call, text)
-    end
-  end, 3000)
-end
-
----Find literal calls and show a hint for each result.
+---Find static calls and show a hint for each result.
+---Manual runs report progress. Automatic runs stay quiet.
 ---@param bufnr? number
-function M.refresh(bufnr)
+---@param manual? boolean
+function M.refresh(bufnr, manual)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
   if not config.inlay.enabled then
     return
@@ -84,11 +61,6 @@ function M.refresh(bufnr)
   end
 
   local s = ensure_state(bufnr)
-  local tick = vim.api.nvim_buf_get_changedtick(bufnr)
-  if s.tick ~= tick then
-    s.cache = {}
-    s.tick = tick
-  end
   s.gen = s.gen + 1
   local gen = s.gen
   M.clear(bufnr)
@@ -99,14 +71,60 @@ function M.refresh(bufnr)
   local calls = treesitter.find_total_calls(bufnr)
   local max = config.inlay.max_results
 
+  local to_eval = {}
   local shown = 0
   for _, call in ipairs(calls) do
     if shown >= max then
       break
     end
     shown = shown + 1
-    eval_and_render(bufnr, s, call, proj, lines, path, gen)
+    local cached = s.cache[call.key]
+    if cached then
+      M.render_one(bufnr, call, cached)
+    else
+      to_eval[#to_eval + 1] = call
+    end
   end
+
+  local pending = #to_eval
+  if manual then
+    if pending == 0 then
+      vim.notify('koka.nvim: inlay hints up to date', vim.log.levels.INFO)
+    else
+      vim.notify(string.format('koka.nvim: evaluating %d call(s)...', pending), vim.log.levels.INFO)
+    end
+  end
+  if pending == 0 then
+    return
+  end
+
+  local function done_one()
+    pending = pending - 1
+    if pending == 0 and manual then
+      vim.notify('koka.nvim: inlay hints updated', vim.log.levels.INFO)
+    end
+  end
+
+  for _, call in ipairs(to_eval) do
+    debugger.eval_total(proj, path, lines, call.func_name, call.args_text, function(text)
+      if gen == s.gen and text then
+        s.cache[call.key] = text
+        M.render_one(bufnr, call, text)
+      end
+      done_one()
+    end, 3000)
+  end
+end
+
+---Clear the cache for a buffer and refresh it with progress.
+---@param bufnr? number
+function M.invalidate(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  local s = state[bufnr]
+  if s then
+    s.cache = {}
+  end
+  M.refresh(bufnr, true)
 end
 
 ---Schedule a debounced refresh for a buffer.
@@ -142,7 +160,7 @@ function M.toggle()
   config.inlay.enabled = not config.inlay.enabled
   local bufnr = vim.api.nvim_get_current_buf()
   if config.inlay.enabled then
-    M.refresh(bufnr)
+    M.refresh(bufnr, true)
     vim.notify('koka.nvim: inlay hints enabled', vim.log.levels.INFO)
   else
     M.clear(bufnr)
@@ -156,7 +174,7 @@ function M.setup()
 
   local group = vim.api.nvim_create_augroup('koka_inlay', { clear = true })
 
-  vim.api.nvim_create_autocmd({ 'LspAttach', 'BufWritePost', 'InsertLeave', 'CursorHold' }, {
+  vim.api.nvim_create_autocmd('LspAttach', {
     group = group,
     pattern = '*.kk',
     callback = function(args)

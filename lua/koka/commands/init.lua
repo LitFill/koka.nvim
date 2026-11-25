@@ -139,7 +139,7 @@ function M.show_help()
     '  :Koka test [name]      Run test function',
     '  :Koka config           Show project configuration',
     '  :Koka refresh_codelens Refresh code lenses',
-    '  :Koka inlay            Toggle inlay hints for total functions',
+    '  :Koka inlay [invalidate] Toggle hints or clear the cache',
     '  :Koka goto <file>      Open a .kk file by name',
     '  :Koka help             Show this help',
     '  :Koka lsp start        Start LSP server',
@@ -343,9 +343,15 @@ local command_tbl = {
     end,
   },
   inlay = {
-    impl = function()
-      require('koka.commands.inlay').toggle()
+    impl = function(args)
+      local inlay = require('koka.commands.inlay')
+      if args[1] == 'invalidate' then
+        inlay.invalidate()
+      else
+        inlay.toggle()
+      end
     end,
+    complete = { 'toggle', 'invalidate' },
   },
   help = {
     impl = function()

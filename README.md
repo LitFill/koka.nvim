@@ -74,7 +74,7 @@ All commands are under `:Koka <subcommand>`:
 | `:Koka test` | Run all test functions in current buffer |
 | `:Koka config` | Show current project configuration |
 | `:Koka refresh_codelens` | Refresh code lenses |
-| `:Koka inlay` | Toggle inlay hints for total functions |
+| `:Koka inlay [invalidate]` | Toggle hints, or clear the cache and re-run |
 | `:Koka goto <file>` | Open a `.kk` file by name (with or without `.kk`) |
 | `:Koka help` | Show the command list in a float |
 | `:Koka lsp start` | Start the Koka LSP server |
