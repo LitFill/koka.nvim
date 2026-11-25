@@ -105,14 +105,21 @@ function M.refresh(bufnr, manual)
     end
   end
 
+  local first_err = nil
   for _, call in ipairs(to_eval) do
-    debugger.eval_total(proj, path, lines, call.func_name, call.args_text, function(text)
+    debugger.eval_total(proj, path, lines, call.func_name, call.args_text, function(text, err)
       if gen == s.gen and text then
         s.cache[call.key] = text
         M.render_one(bufnr, call, text)
       end
+      if err and not first_err then
+        first_err = err
+        if manual then
+          vim.notify('koka.nvim: ' .. err, vim.log.levels.ERROR)
+        end
+      end
       done_one()
-    end, 3000)
+    end, 15000)
   end
 end
 
