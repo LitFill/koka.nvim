@@ -298,4 +298,135 @@ function M.eval_total(project_config, program_path, lines, func_name, args_text,
   end, timeout_ms)
 end
 
+---Build the wrapper source for many calls. Each result follows a marker line.
+---@param lines string[] The buffer lines
+---@param calls table[] The calls
+---@return string[] wrapper_lines
+function M._build_wrapper_calls(lines, calls)
+  local wrapper = {}
+  vim.list_extend(wrapper, lines)
+  wrapper[#wrapper + 1] = ''
+  wrapper[#wrapper + 1] = 'fun kokaInlayEntry() {'
+  for i, call in ipairs(calls) do
+    wrapper[#wrapper + 1] = string.format('  println("@@KI%d@@")', i)
+    wrapper[#wrapper + 1] = string.format('  println(%s(%s))', call.func_name, call.args_text)
+  end
+  wrapper[#wrapper + 1] = '}'
+  return wrapper
+end
+
+---Evaluate many total calls in one koka run. Returns a map of key to result text.
+---@param project_config koka.project.Config The project config
+---@param program_path string Path to the Koka program
+---@param lines string[] The buffer lines
+---@param calls table[] The calls
+---@param callback fun(results: table<string,string>?, error_text: string?)
+---@param timeout_ms? number Kill the run after this many milliseconds
+function M.eval_calls(project_config, program_path, lines, calls, callback, timeout_ms)
+  timeout_ms = timeout_ms or 20000
+  local orig_dir = vim.fs.dirname(program_path)
+  local module_name = M._module_name(lines, program_path)
+  local tmp_dir = vim.fn.tempname()
+  vim.fn.mkdir(tmp_dir, 'p')
+  local tmp_file = vim.fs.joinpath(tmp_dir, module_name .. '.kk')
+  local wrapper = M._build_wrapper_calls(lines, calls)
+  vim.fn.writefile(wrapper, tmp_file)
+
+  local cmd = { 'koka' }
+  if project_config.target and project_config.target ~= 'c' then
+    table.insert(cmd, '--target=' .. project_config.target)
+  end
+  table.insert(cmd, '--include=' .. orig_dir)
+  if project_config.include_dirs then
+    for _, include_dir in ipairs(project_config.include_dirs) do
+      table.insert(cmd, '--include=' .. include_dir)
+    end
+  end
+  if project_config.compiler_args then
+    vim.list_extend(cmd, project_config.compiler_args)
+  end
+  table.insert(cmd, '-e')
+  table.insert(cmd, tmp_file)
+  table.insert(cmd, '--main-entry=kokaInlayEntry')
+
+  local cwd = project_config.cwd or orig_dir
+  local out = {}
+  local err = {}
+  local done = false
+  local job
+
+  local function finish(results, error_text)
+    if done then
+      return
+    end
+    done = true
+    if job then
+      pcall(vim.fn.jobstop, job)
+    end
+    vim.fn.delete(tmp_dir, 'rf')
+    callback(results, error_text)
+  end
+
+  job = vim.fn.jobstart(cmd, {
+    cwd = cwd,
+    on_stdout = function(_, data)
+      if data then
+        vim.list_extend(out, data)
+      end
+    end,
+    on_stderr = function(_, data)
+      if data then
+        vim.list_extend(err, data)
+      end
+    end,
+    on_exit = function(_, exit_code)
+      if exit_code ~= 0 then
+        local errout = table.concat(err, '\n'):gsub('^%s+', ''):gsub('%s+$', '')
+        local outtail = table.concat(out, '\n'):match('([^\n]+)%s*$') or ''
+        local msg = outtail
+        if errout ~= '' then
+          msg = (msg ~= '' and (msg .. '\n' .. errout) or errout)
+        end
+        if msg == '' then
+          msg = 'koka exited with code ' .. exit_code
+        end
+        finish(nil, msg)
+        return
+      end
+      -- Parse marker lines. The next non-empty line is that call's result.
+      local results = {}
+      local expect = nil
+      for _, line in ipairs(out) do
+        if expect then
+          local text = line:gsub('^%s+', ''):gsub('%s+$', '')
+          if text ~= '' then
+            results[expect] = text
+            expect = nil
+          end
+        else
+          local idx = line:match('^@@KI(%d+)@@$')
+          if idx then
+            local call = calls[tonumber(idx)]
+            if call then
+              expect = call.key
+            end
+          end
+        end
+      end
+      finish(results, nil)
+    end,
+  })
+
+  if job <= 0 then
+    finish(nil, 'could not start koka')
+    return
+  end
+
+  vim.defer_fn(function()
+    if not done then
+      finish(nil, 'koka timed out')
+    end
+  end, timeout_ms)
+end
+
 return M

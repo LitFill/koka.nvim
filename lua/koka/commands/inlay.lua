@@ -98,29 +98,23 @@ function M.refresh(bufnr, manual)
     return
   end
 
-  local function done_one()
-    pending = pending - 1
-    if pending == 0 and manual then
-      vim.notify('koka.nvim: inlay hints updated', vim.log.levels.INFO)
-    end
-  end
-
-  local first_err = nil
-  for _, call in ipairs(to_eval) do
-    debugger.eval_total(proj, path, lines, call.func_name, call.args_text, function(text, err)
-      if gen == s.gen and text then
-        s.cache[call.key] = text
-        M.render_one(bufnr, call, text)
-      end
-      if err and not first_err then
-        first_err = err
-        if manual then
-          vim.notify('koka.nvim: ' .. err, vim.log.levels.ERROR)
+  debugger.eval_calls(proj, path, lines, to_eval, function(results, err)
+    if gen == s.gen and results then
+      for _, call in ipairs(to_eval) do
+        local text = results[call.key]
+        if text then
+          s.cache[call.key] = text
+          M.render_one(bufnr, call, text)
         end
       end
-      done_one()
-    end, 15000)
-  end
+    end
+    if err and manual then
+      vim.notify('koka.nvim: ' .. err, vim.log.levels.ERROR)
+    end
+    if manual then
+      vim.notify('koka.nvim: inlay hints updated', vim.log.levels.INFO)
+    end
+  end, 20000)
 end
 
 ---Clear the cache for a buffer and refresh it with progress.
