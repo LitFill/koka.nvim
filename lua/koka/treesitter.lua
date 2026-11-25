@@ -115,6 +115,14 @@ function M.find_runnables(bufnr)
   end
 
   if #runnables > 0 then
+    -- When a module is declared, only `pub` functions are runnable.
+    if M._has_module_declaration(bufnr) then
+      local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+      runnables = vim.tbl_filter(function(r)
+        local text = lines[r.line + 1] or ''
+        return text:match('^%s*pub%s+fun') ~= nil
+      end, runnables)
+    end
     return runnables
   end
 

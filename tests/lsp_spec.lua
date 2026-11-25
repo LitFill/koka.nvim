@@ -1,5 +1,19 @@
+local helpers = require('tests.helpers')
+
+---Load koka.lsp with a fresh module cache so `package.loaded['koka.project']`
+---stubs set by a test take effect.
+local function load_lsp()
+  package.loaded['koka.lsp'] = nil
+  return require('koka.lsp')
+end
+
 describe('koka.lsp', function()
-  local lsp = require('koka.lsp')
+  local lsp
+
+  before_each(function()
+    helpers.reset_mocks()
+    lsp = load_lsp()
+  end)
 
   describe('start', function()
     it('should start LSP client with correct config', function()
@@ -31,8 +45,8 @@ describe('koka.lsp', function()
       assert.equal('koka', started_config.name)
       assert.same({ 'koka' }, started_config.filetypes)
       assert.equal('/test/project', started_config.root_dir)
-      assert.is_not_nil(started_config.cmd and table.concat(started_config.cmd, ' '):match('koka'))
-      assert.is_not_nil(started_config.cmd and table.concat(started_config.cmd, ' '):match('--language-server'))
+      assert.is_not_nil(started_config.cmd and table.concat(started_config.cmd, ' '):find('koka', 1, true))
+      assert.is_not_nil(started_config.cmd and table.concat(started_config.cmd, ' '):find('--language-server', 1, true))
     end)
   end)
 
@@ -70,14 +84,16 @@ describe('koka.lsp', function()
     it('should stop then start client', function()
       local stopped = false
       local started = false
-
       vim.lsp.get_clients = function(_)
         if not stopped then
           return {
             {
               id = 1,
-              stop = function()
+              stop = function(self)
                 stopped = true
+                if self.on_exit then
+                  self.on_exit()
+                end
               end,
             },
           }
@@ -102,11 +118,6 @@ describe('koka.lsp', function()
       lsp.restart(0)
 
       assert.is_true(stopped)
-
-      vim.wait(150, function()
-        return started
-      end)
-
       assert.is_true(started)
     end)
   end)
