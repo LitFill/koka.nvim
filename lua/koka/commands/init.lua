@@ -17,6 +17,38 @@ local M = {}
 ---Whether the command supports a bang!
 ---@field bang? boolean
 
+---Open a read-only scratch float and return its buffer.
+---@param lines string[]
+---@param title string
+---@return number buf
+local function open_float(lines, title)
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].bufhidden = 'wipe'
+  vim.bo[buf].modifiable = false
+
+  local width = math.max(40, math.min(80, vim.o.columns - 4))
+  local height = #lines + 2
+  local row = math.max(0, math.floor((vim.o.lines - height) / 2))
+  local col = math.max(0, math.floor((vim.o.columns - width) / 2))
+
+  vim.api.nvim_open_win(buf, true, {
+    relative = 'editor',
+    width = width,
+    height = height,
+    row = row,
+    col = col,
+    style = 'minimal',
+    border = 'rounded',
+    title = title,
+    title_pos = 'center',
+  })
+
+  vim.keymap.set('n', '<Esc>', '<cmd>close<cr>', { buffer = buf })
+  vim.keymap.set('n', 'q', '<cmd>close<cr>', { buffer = buf })
+  return buf
+end
+
 ---Build a Koka file
 ---@param file_path string
 function M.build_file(file_path)
@@ -93,31 +125,128 @@ function M.show_config()
       end
     end
 
-    -- Create a floating window to display the configuration
-    local buf = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-
-    local width = 50
-    local height = #lines + 2
-    local row = math.floor((vim.o.lines - height) / 2)
-    local col = math.floor((vim.o.columns - width) / 2)
-
-    vim.api.nvim_open_win(buf, true, {
-      relative = 'editor',
-      width = width,
-      height = height,
-      row = row,
-      col = col,
-      style = 'minimal',
-      border = 'rounded',
-      title = 'Koka Configuration',
-      title_pos = 'center',
-    })
-
-    -- Close on any key press
-    vim.keymap.set('n', '<Esc>', '<cmd>close<cr>', { buffer = buf })
-    vim.keymap.set('n', 'q', '<cmd>close<cr>', { buffer = buf })
+    open_float(lines, 'Koka Configuration')
   end)
+end
+
+---Show available subcommands in a float
+function M.show_help()
+  local lines = {
+    'Koka.nvim commands:',
+    '',
+    '  :Koka run [name]       Run function at cursor or named function',
+    '  :Koka build [file]     Build current file or named file',
+    '  :Koka test [name]      Run test function',
+    '  :Koka config           Show project configuration',
+    '  :Koka refresh_codelens Refresh code lenses',
+    '  :Koka goto <file>      Open a .kk file by name',
+    '  :Koka help             Show this help',
+    '  :Koka lsp start        Start LSP server',
+    '  :Koka lsp stop         Stop LSP server',
+    '  :Koka lsp restart      Restart LSP server',
+    '',
+    'Press q or <Esc> to close.',
+  }
+  open_float(lines, 'Koka Help')
+end
+
+---Get the project root directory for the given file path (synchronous).
+---@param file_path string
+---@return string root_dir
+local function get_root_dir(file_path)
+  local project = require('koka.project')
+  return project.get_resolved_config(file_path).cwd or vim.fs.dirname(file_path)
+end
+
+---Find .kk files in the project, relative to the project root.
+---@param root_dir string
+---@return string[] rel_paths
+local function find_koka_files(root_dir)
+  local files = vim.fs.find(function(name)
+    return name:match('%.kk$')
+  end, {
+    path = root_dir,
+    type = 'file',
+    limit = math.huge,
+  })
+
+  local rel = {}
+  for _, f in ipairs(files) do
+    rel[#rel + 1] = vim.fs.relpath(root_dir, f)
+  end
+  table.sort(rel)
+  return rel
+end
+
+---Complete .kk file paths relative to the project root.
+---@param lead string
+---@return string[]
+function M.complete_koka_files(lead)
+  local root_dir = get_root_dir(vim.api.nvim_buf_get_name(0))
+  return vim.tbl_filter(function(p)
+    return vim.startswith(p, lead)
+  end, find_koka_files(root_dir))
+end
+
+---Open a Koka file by name. The name may omit the .kk extension.
+---@param name string?
+function M.goto_file(name)
+  if not name or name == '' then
+    vim.notify('[koka.nvim] goto: missing file name', vim.log.levels.ERROR)
+    return
+  end
+
+  local root_dir = get_root_dir(vim.api.nvim_buf_get_name(0))
+
+  ---@param p string
+  ---@return boolean
+  local function is_kk(p)
+    return vim.endswith(p, '.kk')
+  end
+
+  -- Accept the name with or without the .kk extension.
+  local target = is_kk(name) and name or (name .. '.kk')
+
+  -- Absolute path.
+  if name:match('^/') or name:match('^%a:') then
+    if vim.uv.fs_stat(target) then
+      vim.cmd.edit(vim.fn.fnameescape(target))
+    else
+      vim.notify(string.format('[koka.nvim] goto: file not found: %s', target), vim.log.levels.ERROR)
+    end
+    return
+  end
+
+  -- Path relative to the project root.
+  local abs = vim.fs.joinpath(root_dir, target)
+  if vim.uv.fs_stat(abs) then
+    vim.cmd.edit(vim.fn.fnameescape(abs))
+    return
+  end
+
+  -- Match by base name anywhere in the project.
+  local base = vim.fs.basename(target)
+  local matches = vim.fs.find(function(n)
+    return n == base
+  end, {
+    path = root_dir,
+    type = 'file',
+    limit = math.huge,
+  })
+
+  if #matches == 0 then
+    vim.notify(string.format('[koka.nvim] goto: no Koka file matches: %s', name), vim.log.levels.ERROR)
+    return
+  end
+
+  if #matches > 1 then
+    vim.notify(
+      string.format('[koka.nvim] goto: %d files match %s, opening the first', #matches, base),
+      vim.log.levels.WARN
+    )
+  end
+
+  vim.cmd.edit(vim.fn.fnameescape(matches[1]))
 end
 
 ---@type table<string, koka.commands.Subcommand>
@@ -204,6 +333,19 @@ local command_tbl = {
       )
     end,
   },
+  ['goto'] = {
+    impl = function(args)
+      M.goto_file(args[1])
+    end,
+    complete = function(lead)
+      return M.complete_koka_files(lead)
+    end,
+  },
+  help = {
+    impl = function()
+      M.show_help()
+    end,
+  },
 }
 
 ---@param name string The name of the subcommand
@@ -215,12 +357,14 @@ local function register_subcommand_tbl(name, subcmd_tbl)
       if subcmd then
         subcmd.impl(args, ...)
       else
+        local available = vim.tbl_keys(subcmd_tbl)
+        table.sort(available)
         vim.notify(
           ([[
-Koka %s: Expected subcommand.
-Available subcommands:
-%s
-]]):format(name, table.concat(vim.tbl_keys(subcmd_tbl), ', ')),
+Koka %s: expected a subcommand.
+Available subcommands: %s
+Usage: :Koka %s <subcommand> [args]
+]]):format(name, table.concat(available, ', '), name),
           vim.log.levels.ERROR
         )
       end
@@ -267,7 +411,12 @@ local function koka_command_imp(opts)
   local args = #fargs > 1 and vim.list_slice(fargs, 2) or {}
   local command = command_tbl[cmd]
   if not command then
-    vim.notify(string.format('[koka.nvim] Unknown command: %s for :Koka', cmd), vim.log.levels.ERROR)
+    local available = vim.tbl_keys(command_tbl)
+    table.sort(available)
+    vim.notify(
+      string.format('[koka.nvim] Unknown command: %s. Available: %s', cmd, table.concat(available, ', ')),
+      vim.log.levels.ERROR
+    )
     return
   end
   command.impl(args, opts)

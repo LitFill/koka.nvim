@@ -72,6 +72,8 @@ All commands are under `:Koka <subcommand>`:
 | `:Koka test` | Run all test functions in current buffer |
 | `:Koka config` | Show current project configuration |
 | `:Koka refresh_codelens` | Refresh code lenses |
+| `:Koka goto <file>` | Open a `.kk` file by name (with or without `.kk`) |
+| `:Koka help` | Show the command list in a float |
 | `:Koka lsp start` | Start the Koka LSP server |
 | `:Koka lsp stop` | Stop the Koka LSP server |
 | `:Koka lsp restart` | Restart the Koka LSP server |
