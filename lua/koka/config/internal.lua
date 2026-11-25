@@ -16,6 +16,15 @@ local KokaDefaultConfig = {
     on_attach = function(_, _) end,
     settings = {},
   },
+  ---@class koka.inlay.Config Inlay hint options.
+  inlay = {
+    ---@type boolean Whether to show inlay hints for total functions.
+    enabled = false,
+    ---@type number Delay in milliseconds before a refresh runs.
+    debounce_ms = 300,
+    ---@type number Maximum number of hints to show in one buffer.
+    max_results = 32,
+  },
 }
 
 local kokanvim = vim.g.koka or {}
@@ -34,6 +43,21 @@ if KokaConfig.lsp then
   if type(KokaConfig.lsp.on_attach) ~= 'function' then
     vim.notify('koka.nvim: config.lsp.on_attach must be function', vim.log.levels.WARN)
     KokaConfig.lsp.on_attach = function() end
+  end
+end
+
+if KokaConfig.inlay then
+  if type(KokaConfig.inlay.enabled) ~= 'boolean' then
+    vim.notify('koka.nvim: config.inlay.enabled must be boolean', vim.log.levels.WARN)
+    KokaConfig.inlay.enabled = false
+  end
+  if type(KokaConfig.inlay.debounce_ms) ~= 'number' or KokaConfig.inlay.debounce_ms < 0 then
+    vim.notify('koka.nvim: config.inlay.debounce_ms must be a non-negative number', vim.log.levels.WARN)
+    KokaConfig.inlay.debounce_ms = 300
+  end
+  if type(KokaConfig.inlay.max_results) ~= 'number' or KokaConfig.inlay.max_results < 1 then
+    vim.notify('koka.nvim: config.inlay.max_results must be a positive number', vim.log.levels.WARN)
+    KokaConfig.inlay.max_results = 32
   end
 end
 

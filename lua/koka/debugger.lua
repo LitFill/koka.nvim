@@ -168,4 +168,117 @@ function M.launch(client, project_config, args)
   M.execute(client, project_config, args)
 end
 
+---Read the module name from buffer lines. Fall back to the file base name.
+---@param lines string[] The buffer lines
+---@param program_path string Path to the Koka program
+---@return string module_name
+function M._module_name(lines, program_path)
+  for _, line in ipairs(lines) do
+    local name = line:match('^%s*module%s+([%w%-%.]+)')
+    if name then
+      return name
+    end
+  end
+  local base = vim.fs.basename(program_path or '')
+  return (base:gsub('%.kk$', ''))
+end
+
+---Build the wrapper source: the buffer text plus a main that prints the call.
+---@param lines string[] The buffer lines
+---@param func_name string Name of the total function
+---@param args_text string Comma-separated literal arguments
+---@return string[] wrapper_lines
+function M._build_wrapper(lines, func_name, args_text)
+  local wrapper = {}
+  vim.list_extend(wrapper, lines)
+  wrapper[#wrapper + 1] = ''
+  wrapper[#wrapper + 1] = string.format('fun main() { println(%s(%s)) }', func_name, args_text)
+  return wrapper
+end
+
+---Evaluate a total function with literal arguments and capture stdout.
+---Writes a temp module that prints the call, runs koka -e, and returns text.
+---@param project_config koka.project.Config The project config
+---@param program_path string Path to the Koka program
+---@param lines string[] The buffer lines
+---@param func_name string Name of the total function
+---@param args_text string Comma-separated literal arguments
+---@param callback fun(result: string?) Called with trimmed stdout, or nil on failure
+---@param timeout_ms? number Kill the run after this many milliseconds
+function M.eval_total(project_config, program_path, lines, func_name, args_text, callback, timeout_ms)
+  timeout_ms = timeout_ms or 3000
+  local orig_dir = vim.fs.dirname(program_path)
+  local module_name = M._module_name(lines, program_path)
+  local tmp_dir = vim.fn.tempname()
+  vim.fn.mkdir(tmp_dir, 'p')
+  local tmp_file = vim.fs.joinpath(tmp_dir, module_name .. '.kk')
+  local wrapper = M._build_wrapper(lines, func_name, args_text)
+  vim.fn.writefile(wrapper, tmp_file)
+
+  local cmd = { 'koka' }
+  if project_config.target and project_config.target ~= 'c' then
+    table.insert(cmd, '--target=' .. project_config.target)
+  end
+  table.insert(cmd, '--include=' .. orig_dir)
+  if project_config.include_dirs then
+    for _, include_dir in ipairs(project_config.include_dirs) do
+      table.insert(cmd, '--include=' .. include_dir)
+    end
+  end
+  if project_config.compiler_args then
+    vim.list_extend(cmd, project_config.compiler_args)
+  end
+  table.insert(cmd, '-e')
+  table.insert(cmd, tmp_file)
+
+  local cwd = project_config.cwd or orig_dir
+  local out = {}
+  local done = false
+  local job
+
+  local function finish(result)
+    if done then
+      return
+    end
+    done = true
+    if job then
+      pcall(vim.fn.jobstop, job)
+    end
+    vim.fn.delete(tmp_dir, 'rf')
+    callback(result)
+  end
+
+  job = vim.fn.jobstart(cmd, {
+    cwd = cwd,
+    on_stdout = function(_, data)
+      if data then
+        vim.list_extend(out, data)
+      end
+    end,
+    on_exit = function(_, exit_code)
+      if exit_code ~= 0 then
+        finish(nil)
+        return
+      end
+      local text = table.concat(out, '\n'):gsub('^%s+', ''):gsub('%s+$', '')
+      if text == '' then
+        finish(nil)
+        return
+      end
+      finish(text)
+    end,
+  })
+
+  if job <= 0 then
+    finish(nil)
+    return
+  end
+
+  vim.defer_fn(function()
+    if not done then
+      finish(nil)
+    end
+  end, timeout_ms)
+end
+
 return M

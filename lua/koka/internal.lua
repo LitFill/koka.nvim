@@ -29,6 +29,7 @@ local function init()
   -- Setup other commands
   require('koka.commands.codelens').setup()
   require('koka.commands').setup()
+  require('koka.commands.inlay').setup()
 end
 
 M.ftplugin = function()

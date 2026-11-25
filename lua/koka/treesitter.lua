@@ -182,4 +182,199 @@ function M._has_module_declaration(bufnr)
   return false
 end
 
+---Check whether an argument source text is a single literal value.
+---Accepts int, float, char, and string literals, with optional outer parens.
+---@param text string The argument source text
+---@return boolean
+function M.is_literal_arg(text)
+  if not text then
+    return false
+  end
+  local s = text:gsub('^%s+', ''):gsub('%s+$', '')
+
+  -- Strip balanced outer parentheses.
+  local changed = true
+  while changed do
+    changed = false
+    if s:sub(1, 1) == '(' and s:sub(-1) == ')' then
+      local depth = 0
+      local balanced = true
+      for i = 1, #s do
+        local c = s:sub(i, i)
+        if c == '(' then
+          depth = depth + 1
+        elseif c == ')' then
+          depth = depth - 1
+          if depth == 0 and i < #s then
+            balanced = false
+            break
+          end
+        end
+      end
+      if balanced and depth == 0 then
+        s = s:sub(2, -2):gsub('^%s+', ''):gsub('%s+$', '')
+        changed = true
+      end
+    end
+  end
+
+  if s == '' then
+    return false
+  end
+  -- String literal.
+  if s:sub(1, 1) == '"' and s:sub(-1) == '"' and #s >= 2 then
+    return true
+  end
+  -- Char literal.
+  if s:sub(1, 1) == "'" and s:sub(-1) == "'" and #s >= 2 then
+    return true
+  end
+  -- Hex integer.
+  if s:match('^%-?0[xX]%x+') then
+    return true
+  end
+  -- Decimal or float. Allow digits, separators, dot, exponent, and sign.
+  if s:match('^%-?%d') and s:match('^%-?[0-9a-fA-FxX._eE%+%-]+$') then
+    return true
+  end
+  return false
+end
+
+---Try to read one opexpr/ntlexpr node as a simple call with literal arguments.
+---@param node TSNode The candidate node
+---@param bufnr number The buffer
+---@return table? call {line, col, func_name, args_text, key}, or nil
+function M._try_call(node, bufnr)
+  -- A simple call has exactly two named children: the atom and the arguments.
+  if node:named_child_count() ~= 2 then
+    return nil
+  end
+  local atom = node:named_child(0)
+  local call_args = node:named_child(1)
+  if atom:type() ~= 'atom' or call_args:type() ~= 'arguments' then
+    return nil
+  end
+
+  -- A call ends with ')'. An index ends with ']'. Reject the index.
+  local node_text = vim.treesitter.get_node_text(node, bufnr)
+  if node_text:sub(-1) ~= ')' then
+    return nil
+  end
+
+  -- The atom must be a plain name, not a literal or constructor.
+  local name_node = atom:named_child(0)
+  if not name_node or name_node:type() ~= 'name' then
+    return nil
+  end
+  local qid = name_node:named_child(0)
+  if not qid or qid:type() ~= 'qidentifier' then
+    return nil
+  end
+  local func_name = vim.treesitter.get_node_text(qid, bufnr)
+  if func_name:find('%.') then
+    return nil
+  end
+
+  -- Every argument must be a literal.
+  local arg_texts = {}
+  for i = 0, call_args:named_child_count() - 1 do
+    local arg = call_args:named_child(i)
+    if arg:type() ~= 'argument' then
+      return nil
+    end
+    local txt = vim.treesitter.get_node_text(arg, bufnr)
+    if not M.is_literal_arg(txt) then
+      return nil
+    end
+    arg_texts[#arg_texts + 1] = txt
+  end
+  if #arg_texts == 0 then
+    return nil
+  end
+
+  local args_text = table.concat(arg_texts, ', ')
+  local row, col = node:end_()
+  return {
+    line = row,
+    col = col,
+    func_name = func_name,
+    args_text = args_text,
+    key = func_name .. '(' .. args_text .. ')',
+  }
+end
+
+---Fallback regex scan for calls with literal arguments.
+---@param bufnr number
+---@return table[] calls
+function M._find_total_calls_fallback(bufnr)
+  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local results = {}
+  for idx, line in ipairs(lines) do
+    for fname, args in line:gmatch('([%w_]+)%(([^%(%)]*)%)') do
+      local parts = {}
+      local all_lit = args ~= ''
+      for part in (args .. ','):gmatch('(.-),') do
+        part = part:gsub('^%s+', ''):gsub('%s+$', '')
+        if part ~= '' then
+          if not M.is_literal_arg(part) then
+            all_lit = false
+            break
+          end
+          parts[#parts + 1] = part
+        end
+      end
+      if all_lit and #parts > 0 then
+        local args_text = table.concat(parts, ', ')
+        results[#results + 1] = {
+          line = idx - 1,
+          col = #line,
+          func_name = fname,
+          args_text = args_text,
+          key = fname .. '(' .. args_text .. ')',
+        }
+      end
+    end
+  end
+  return results
+end
+
+---Find calls to total functions where every argument is a literal.
+---Uses TreeSitter when available, otherwise a regex fallback.
+---@param bufnr number
+---@return table[] calls Array of {line, col, func_name, args_text, key}
+function M.find_total_calls(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+
+  local has_parser, parser = pcall(vim.treesitter.get_parser, bufnr, 'koka')
+  if not has_parser or not parser then
+    return M._find_total_calls_fallback(bufnr)
+  end
+
+  local ok, tree = pcall(function()
+    return parser:parse()[1]
+  end)
+  if not ok or not tree then
+    return M._find_total_calls_fallback(bufnr)
+  end
+
+  local root = tree:root()
+  local results = {}
+
+  local function visit(node)
+    local t = node:type()
+    if t == 'opexpr' or t == 'ntlexpr' then
+      local r = M._try_call(node, bufnr)
+      if r then
+        results[#results + 1] = r
+      end
+    end
+    for i = 0, node:named_child_count() - 1 do
+      visit(node:named_child(i))
+    end
+  end
+
+  pcall(visit, root)
+  return results
+end
+
 return M

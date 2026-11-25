@@ -19,6 +19,8 @@ intelligent code execution.
   project configuration files
 - 🎯 **Filetype Plugin** - Zero-configuration setup that activates
   automatically for `.kk` files
+- 💡 **Inlay Hints** - Show the result of total functions at call sites as
+  virtual text (toggle with `:Koka inlay`)
 
 ## Installation
 
@@ -72,6 +74,7 @@ All commands are under `:Koka <subcommand>`:
 | `:Koka test` | Run all test functions in current buffer |
 | `:Koka config` | Show current project configuration |
 | `:Koka refresh_codelens` | Refresh code lenses |
+| `:Koka inlay` | Toggle inlay hints for total functions |
 | `:Koka goto <file>` | Open a `.kk` file by name (with or without `.kk`) |
 | `:Koka help` | Show the command list in a float |
 | `:Koka lsp start` | Start the Koka LSP server |

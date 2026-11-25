@@ -139,6 +139,7 @@ function M.show_help()
     '  :Koka test [name]      Run test function',
     '  :Koka config           Show project configuration',
     '  :Koka refresh_codelens Refresh code lenses',
+    '  :Koka inlay            Toggle inlay hints for total functions',
     '  :Koka goto <file>      Open a .kk file by name',
     '  :Koka help             Show this help',
     '  :Koka lsp start        Start LSP server',
@@ -339,6 +340,11 @@ local command_tbl = {
     end,
     complete = function(lead)
       return M.complete_koka_files(lead)
+    end,
+  },
+  inlay = {
+    impl = function()
+      require('koka.commands.inlay').toggle()
     end,
   },
   help = {

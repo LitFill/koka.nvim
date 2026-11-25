@@ -29,6 +29,7 @@ vim.g.koka = vim.g.koka
 ---@class koka.Opts
 ---
 ---@field lsp? koka.lsp.ClientOpts
+---@field inlay? koka.inlay.Config
 
 ---@class koka.lsp.ClientOpts
 ---
