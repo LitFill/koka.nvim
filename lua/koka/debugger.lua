@@ -264,7 +264,12 @@ function M.eval_total(project_config, program_path, lines, func_name, args_text,
     end,
     on_exit = function(_, exit_code)
       if exit_code ~= 0 then
-        local msg = table.concat(err, '\n'):gsub('^%s+', ''):gsub('%s+$', '')
+        local errout = table.concat(err, '\n'):gsub('^%s+', ''):gsub('%s+$', '')
+        local outtail = table.concat(out, '\n'):match('([^\n]+)%s*$') or ''
+        local msg = outtail
+        if errout ~= '' then
+          msg = (msg ~= '' and (msg .. '\n' .. errout) or errout)
+        end
         if msg == '' then
           msg = 'koka exited with code ' .. exit_code
         end
