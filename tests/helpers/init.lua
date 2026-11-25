@@ -10,12 +10,15 @@ _G.vim = _G.vim or {}
 -- Get the absolute path to the test directory
 local function get_test_dir()
   local current_file = debug.getinfo(1, 'S').source:sub(2)
-  local test_dir = vim.fs.dirname(current_file)
-  return test_dir
+  local dir = vim.fs.dirname(current_file)
+  if not dir:match('^/') then
+    dir = vim.fs.joinpath(vim.uv.cwd(), dir)
+  end
+  return dir
 end
 
 helpers.test_dir = get_test_dir()
-helpers.example_projects_dir = vim.fs.joinpath(helpers.test_dir, 'example-projects')
+helpers.example_projects_dir = vim.fs.joinpath(vim.fs.dirname(helpers.test_dir), 'example-projects')
 
 -- Mock vim.notify
 vim.notify = vim.notify or function(msg, level)
@@ -34,45 +37,30 @@ vim.log = vim.log or {
 
 -- Mock vim.api functions
 vim.api = vim.api or {}
-vim.api.nvim_buf_get_name = vim.api.nvim_buf_get_name
-  or function(bufnr)
-    if bufnr == 42 then
-      return '/test/project/main.kk'
-    end
-    return '/test/project/main.kk'
-  end
+vim.api.nvim_buf_get_name = function(_bufnr)
+  return '/test/project/main.kk'
+end
 
-vim.api.nvim_get_current_buf = vim.api.nvim_get_current_buf or function()
+vim.api.nvim_get_current_buf = function()
   return 0
 end
 
 -- Mock vim.lsp functions
 vim.lsp = vim.lsp or {}
-vim.lsp.get_active_clients = vim.lsp.get_active_clients or function(_)
+vim.lsp.get_clients = function(_)
   return {}
 end
 
-vim.lsp.get_clients = vim.lsp.get_clients or function(_)
-  return {}
-end
-
-vim.lsp.start_client = vim.lsp.start_client or function(_)
-  return 1 -- Return mock client id
-end
-
-vim.lsp.stop_client = vim.lsp.stop_client or function(_)
-  return true
-end
-
-vim.lsp.buf_attach_client = vim.lsp.buf_attach_client or function(_, _)
-  return true
-end
-
-vim.lsp.start = vim.lsp.start or function(_, _)
+vim.lsp.start = function(_, _)
   return 1 -- Return mock client id
 end
 
 vim.lsp.config = vim.lsp.config or {}
+
+-- Run scheduled callbacks synchronously so tests can assert on them
+vim.schedule = function(fn)
+  fn()
+end
 
 -- Mock vim.defer_fn
 vim.defer_fn = vim.defer_fn or function(fn, _)
@@ -112,12 +100,6 @@ end
 
 helpers.get_file_path = function(project_name, file_path)
   return vim.fs.joinpath(helpers.get_project_path(project_name), file_path)
-end
-
--- Temporary stub for mock_fs_find to help with test migration
-helpers.mock_fs_find = function(_)
-  -- This is a temporary stub - tests should be updated to use real project structures
-  print('WARNING: Using deprecated mock_fs_find - please update test to use real project structures')
 end
 
 helpers.reset_mocks = function()
