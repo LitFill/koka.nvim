@@ -62,6 +62,7 @@ end
 ---@param callback? fun(project_dir: string?, project_config: koka.project.Config?) If `nil`, this function runs synchronously
 ---@return string? project_dir (if `callback ~= nil` and successful)
 ---@return koka.project.Config? project_config (if `callback ~= nil` and successful)
+---Local to project.lua. Move to koka.util when a second module needs it.
 ---Run sync_fn. Return its value when callback is nil. Else call callback with it.
 ---@param callback? fun(value: any)
 ---@param sync_fn fun(): any
