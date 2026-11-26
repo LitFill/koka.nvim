@@ -613,4 +613,53 @@ function M.find_total_calls(bufnr)
   return results
 end
 
+---Find the function declaration containing a 0-indexed line.
+---Returns the innermost enclosing `fun` and its name.
+---@param bufnr number
+---@param line number 0-indexed line
+---@return table|nil {name=string, row=number}
+function M.find_function_at(bufnr, line)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+
+  local has_parser, parser = pcall(vim.treesitter.get_parser, bufnr, 'koka')
+  if not has_parser or not parser then
+    return nil
+  end
+
+  local tree = parser:parse()[1]
+  if not tree then
+    return nil
+  end
+
+  local ok, query = pcall(
+    vim.treesitter.query.parse,
+    'koka',
+    [[
+    (puredecl
+      (qidentifier) @func.name
+    )
+  ]]
+  )
+  if not ok then
+    return nil
+  end
+
+  local best = nil
+  for id, node in query:iter_captures(tree:root(), bufnr, 0, -1) do
+    if query.captures[id] == 'func.name' then
+      local parent = node:parent()
+      if parent then
+        local srow, _, erow = parent:range()
+        if line >= srow and line <= erow then
+          if not best or srow > best.row then
+            best = { name = vim.treesitter.get_node_text(node, bufnr), row = srow }
+          end
+        end
+      end
+    end
+  end
+
+  return best
+end
+
 return M

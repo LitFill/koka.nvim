@@ -316,6 +316,148 @@ function M.set_config(key, raw)
 
   koka_ui.notify(string.format('set %s = %s', key, render_value(value)), vim.log.levels.INFO)
 end
+
+---Parse a --showtypesigs line "module/name: type" into name and type.
+---@param line string
+---@return string? name
+---@return string? type
+local function parse_sig_line(line)
+  local lhs, rhs = line:match('^(.+):%s+(.+)$')
+  if not lhs or not rhs then
+    return nil
+  end
+  local name = lhs:match('([^/]+)$')
+  return name, rhs
+end
+
+---Strip a leading forall<...> from a type string.
+---@param t string
+---@return string
+local function strip_forall(t)
+  local rest = t:match('^%s*forall%s*<[^>]*>%s*(.*)$')
+  return rest or t
+end
+
+---Return the result type from a full function type string, or nil.
+---@param t string
+---@return string? ret
+local function result_type(t)
+  local s = strip_forall(t):match('^%s*(.*)$')
+  if s:sub(1, 1) ~= '(' then
+    return nil
+  end
+  local depth, close = 0, nil
+  for i = 1, #s do
+    local c = s:sub(i, i)
+    if c == '(' then
+      depth = depth + 1
+    elseif c == ')' then
+      depth = depth - 1
+      if depth == 0 then
+        close = i
+        break
+      end
+    end
+  end
+  if not close then
+    return nil
+  end
+  local rest = s:sub(close + 1):match('^%s*->%s*(.*)$')
+  if not rest or rest == '' then
+    return nil
+  end
+  return rest
+end
+
+---Insert a return type annotation after the parameter list of a function.
+---@param bufnr number
+---@param func table {name=string, row=number}
+---@param ret string
+function M.apply_return_type(bufnr, func, ret)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local text = lines[func.row + 1]
+  if not text then
+    koka_ui.notify('sig: function line not found', vim.log.levels.ERROR)
+    return
+  end
+  local open = text:find('%(', 1, true)
+  if not open then
+    koka_ui.notify('sig: parameter list not on the function line', vim.log.levels.WARN)
+    return
+  end
+  local depth, close = 0, nil
+  for i = open, #text do
+    local c = text:sub(i, i)
+    if c == '(' then
+      depth = depth + 1
+    elseif c == ')' then
+      depth = depth - 1
+      if depth == 0 then
+        close = i
+        break
+      end
+    end
+  end
+  if not close then
+    koka_ui.notify('sig: parameter list is not closed on the function line', vim.log.levels.WARN)
+    return
+  end
+  local brace = text:find('{', close, true)
+  local between = text:sub(close + 1, brace and (brace - 1) or #text)
+  if between:find(':', 1, true) then
+    koka_ui.notify(string.format('sig: %s already has a return type', func.name), vim.log.levels.INFO)
+    return
+  end
+  vim.api.nvim_buf_set_text(bufnr, func.row, close, func.row, close, ': ' .. ret)
+  koka_ui.notify(string.format('sig: %s : %s', func.name, ret), vim.log.levels.INFO)
+end
+
+---Infer and write the return type of the function under the cursor.
+function M.write_signature()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local treesitter = require('koka.treesitter')
+  local line = vim.api.nvim_win_get_cursor(0)[1] - 1
+  local func = treesitter.find_function_at(bufnr, line)
+  if not func then
+    koka_ui.notify('sig: no function at cursor', vim.log.levels.WARN)
+    return
+  end
+  local file_path = vim.api.nvim_buf_get_name(bufnr)
+  local project = require('koka.project')
+  project.get_resolved_config(file_path, function(config)
+    local cmd = koka_cmd.build(config, { mode = '-c', file = file_path, showtypesigs = true })
+    local cwd = config.cwd or vim.fs.dirname(file_path)
+    vim.system(cmd, { cwd = cwd, text = true }, function(res)
+      vim.schedule(function()
+        local out = table.concat({ res.stdout or '', res.stderr or '' }, '\n')
+        local inferred
+        for _, l in ipairs(vim.split(out, '\n')) do
+          local name, ty = parse_sig_line(l)
+          if name == func.name then
+            inferred = ty
+            break
+          end
+        end
+        if not inferred then
+          koka_ui.notify(
+            string.format('sig: no inferred type for %s (file may not typecheck)', func.name),
+            vim.log.levels.WARN
+          )
+          return
+        end
+        local ret = result_type(inferred)
+        if not ret then
+          koka_ui.notify(string.format('sig: could not parse type: %s', inferred), vim.log.levels.WARN)
+          return
+        end
+        M.apply_return_type(bufnr, func, ret)
+      end)
+    end)
+  end)
+end
 ---Show available subcommands in a float
 function M.show_help()
   local lines = {
@@ -326,6 +468,7 @@ function M.show_help()
     '  :Koka test [name]      Run test function',
     '  :Koka config           Show project configuration',
     '  :Koka set <key> <val>  Set a plugin setting at runtime',
+    '  :Koka sig              Write the inferred return type at the cursor',
     '  :Koka refresh_codelens Refresh code lenses',
     '  :Koka inlay [invalidate] Toggle hints or clear the cache',
     '  :Koka goto <file>      Open a .kk file by name',
@@ -508,6 +651,11 @@ local command_tbl = {
       return vim.tbl_filter(function(k)
         return vim.startswith(k, lead)
       end, keys)
+    end,
+  },
+  sig = {
+    impl = function()
+      M.write_signature()
     end,
   },
   refresh_codelens = {
