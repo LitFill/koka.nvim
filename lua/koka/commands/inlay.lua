@@ -85,17 +85,15 @@ function M.refresh(bufnr, manual)
   local calls = treesitter.find_total_calls(bufnr)
   local max = config.inlay.max_results
 
-  local function is_total_call(call, total)
+  local function is_total_call(call, effects)
     if call.expr then
       return true
     end
-    if total and total[call.func_name] then
-      return true
-    end
-    return not call.func_name:match('^[%w_]+$')
+    -- Unknown functions may be imported total functions. Run them.
+    return not (effects and effects[call.func_name])
   end
 
-  local function run_total(total, effects)
+  local function run_total(_total, effects)
     local to_eval = {}
     local shown = 0
     for _, call in ipairs(calls) do
@@ -106,7 +104,7 @@ function M.refresh(bufnr, manual)
       local cached = s.cache[call.key]
       if cached then
         M.render_one(bufnr, call, cached)
-      elseif is_total_call(call, total) then
+      elseif is_total_call(call, effects) then
         to_eval[#to_eval + 1] = call
       elseif effects and effects[call.func_name] then
         M.render_effect(bufnr, call, effects[call.func_name])
