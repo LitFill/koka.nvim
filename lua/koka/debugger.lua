@@ -340,19 +340,26 @@ local effect_words = {
 ---Parse --showtypesigs output. Return the set of total definition names.
 ---@param out string[] The stdout lines
 ---@return table<string,boolean>
-function M._parse_total(out)
+---Parse --showtypesigs output. Return the total set and the effect map.
+---@param out string[] The stdout lines
+---@return table<string,boolean> total
+---@return table<string,string> effects
+function M._parse_sigs(out)
   local total = {}
+  local effects = {}
   for _, line in ipairs(out) do
     local name = line:match('^sig/([^%s:]+)')
     local rest = line:match('%-%>%s*(.*)$')
     if name and rest then
       local first = rest:match('^(%S+)')
-      if first and not first:find('/') and not effect_words[first] then
+      if first and (first:find('/') or effect_words[first]) then
+        effects[name] = first
+      elseif first then
         total[name] = true
       end
     end
   end
-  return total
+  return total, effects
 end
 
 ---Evaluate many total calls in one koka run. Returns a map of key to result text.
@@ -396,7 +403,7 @@ function M.eval_calls(project_config, program_path, lines, calls, callback, time
   local done = false
   local job
 
-  local function finish(results, total, error_text)
+  local function finish(results, total, effects, error_text)
     if done then
       return
     end
@@ -405,7 +412,7 @@ function M.eval_calls(project_config, program_path, lines, calls, callback, time
       pcall(vim.fn.jobstop, job)
     end
     vim.fn.delete(tmp_dir, 'rf')
-    callback(results, total, error_text)
+    callback(results, total, effects, error_text)
   end
 
   job = vim.fn.jobstart(cmd, {
@@ -431,7 +438,7 @@ function M.eval_calls(project_config, program_path, lines, calls, callback, time
         if msg == '' then
           msg = 'koka exited with code ' .. exit_code
         end
-        finish(nil, nil, msg)
+        finish(nil, nil, nil, msg)
         return
       end
       -- Parse marker lines. The next non-empty line is that call's result.
@@ -454,18 +461,19 @@ function M.eval_calls(project_config, program_path, lines, calls, callback, time
           end
         end
       end
-      finish(results, M._parse_total(out), nil)
+      local total, effects = M._parse_sigs(out)
+      finish(results, total, effects, nil)
     end,
   })
 
   if job <= 0 then
-    finish(nil, nil, 'could not start koka')
+    finish(nil, nil, nil, 'could not start koka')
     return
   end
 
   vim.defer_fn(function()
     if not done then
-      finish(nil, nil, 'koka timed out')
+      finish(nil, nil, nil, 'koka timed out')
     end
   end, timeout_ms)
 end

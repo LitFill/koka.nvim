@@ -47,6 +47,20 @@ function M.render_one(bufnr, call, text)
   })
 end
 
+---Draw one hint that shows the effect row. No run.
+---@param bufnr number
+---@param call table A call from find_total_calls
+---@param effect string The effect row
+function M.render_effect(bufnr, call, effect)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+  pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, call.line, call.col, {
+    virt_text = { { ' : ' .. effect, 'KokaInlayHint' } },
+    virt_text_pos = 'eol',
+  })
+end
+
 ---Find static calls and show a hint for each result.
 ---Manual runs report progress. Automatic runs stay quiet.
 ---@param bufnr? number
@@ -71,50 +85,83 @@ function M.refresh(bufnr, manual)
   local calls = treesitter.find_total_calls(bufnr)
   local max = config.inlay.max_results
 
-  local to_eval = {}
-  local shown = 0
-  for _, call in ipairs(calls) do
-    if shown >= max then
-      break
+  local function is_total_call(call, total)
+    if call.expr then
+      return true
     end
-    shown = shown + 1
-    local cached = s.cache[call.key]
-    if cached then
-      M.render_one(bufnr, call, cached)
-    else
-      to_eval[#to_eval + 1] = call
+    if total and total[call.func_name] then
+      return true
     end
+    return not call.func_name:match('^[%w_]+$')
   end
 
-  local pending = #to_eval
-  if manual then
-    if pending == 0 then
-      vim.notify('koka.nvim: inlay hints up to date', vim.log.levels.INFO)
-    else
-      vim.notify(string.format('koka.nvim: evaluating %d call(s)...', pending), vim.log.levels.INFO)
+  local function run_total(total, effects)
+    local to_eval = {}
+    local shown = 0
+    for _, call in ipairs(calls) do
+      if shown >= max then
+        break
+      end
+      shown = shown + 1
+      local cached = s.cache[call.key]
+      if cached then
+        M.render_one(bufnr, call, cached)
+      elseif is_total_call(call, total) then
+        to_eval[#to_eval + 1] = call
+      elseif effects and effects[call.func_name] then
+        M.render_effect(bufnr, call, effects[call.func_name])
+      end
     end
+
+    local pending = #to_eval
+    if manual then
+      if pending == 0 then
+        vim.notify('koka.nvim: inlay hints up to date', vim.log.levels.INFO)
+      else
+        vim.notify(string.format('koka.nvim: evaluating %d call(s)...', pending), vim.log.levels.INFO)
+      end
+    end
+    if pending == 0 then
+      return
+    end
+
+    debugger.eval_calls(proj, path, lines, to_eval, function(results, _total2, _effects2, err)
+      if gen == s.gen and results then
+        for _, call in ipairs(to_eval) do
+          local text = results[call.key]
+          if text then
+            s.cache[call.key] = text
+            M.render_one(bufnr, call, text)
+          end
+        end
+      end
+      if err and manual then
+        vim.notify('koka.nvim: ' .. err, vim.log.levels.ERROR)
+      end
+      if manual then
+        vim.notify('koka.nvim: inlay hints updated', vim.log.levels.INFO)
+      end
+    end, 20000)
   end
-  if pending == 0 then
+
+  if s.sigs then
+    run_total(s.sigs.total, s.sigs.effects)
     return
   end
 
-  debugger.eval_calls(proj, path, lines, to_eval, function(results, total, err)
-    if gen == s.gen and results then
-      for _, call in ipairs(to_eval) do
-        local text = results[call.key]
-        local is_total = call.expr and true or (total and total[call.func_name]) or not call.func_name:match('^[%w_]+$')
-        if text and is_total then
-          s.cache[call.key] = text
-          M.render_one(bufnr, call, text)
-        end
+  -- Phase 1: get signatures. The wrapper has no calls, so nothing runs.
+  debugger.eval_calls(proj, path, lines, {}, function(_results, total, effects, err)
+    if gen ~= s.gen then
+      return
+    end
+    if err then
+      if manual then
+        vim.notify('koka.nvim: ' .. err, vim.log.levels.ERROR)
       end
+      return
     end
-    if err and manual then
-      vim.notify('koka.nvim: ' .. err, vim.log.levels.ERROR)
-    end
-    if manual then
-      vim.notify('koka.nvim: inlay hints updated', vim.log.levels.INFO)
-    end
+    s.sigs = { total = total, effects = effects }
+    run_total(total, effects)
   end, 20000)
 end
 
@@ -125,6 +172,7 @@ function M.invalidate(bufnr)
   local s = state[bufnr]
   if s then
     s.cache = {}
+    s.sigs = nil
   end
   M.refresh(bufnr, true)
 end

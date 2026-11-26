@@ -238,8 +238,8 @@ describe('koka.debugger eval_total', function()
   end)
 end)
 
-describe('koka.debugger _parse_total', function()
-  it('marks total definitions and skips effectful ones', function()
+describe('koka.debugger _parse_sigs', function()
+  it('splits total definitions and effectful ones', function()
     package.loaded['koka.debugger'] = nil
     local debugger = require('koka.debugger')
     local out = {
@@ -248,10 +248,14 @@ describe('koka.debugger _parse_total', function()
       'sig/maybe: (x : int) -> exn int',
       'sig/show : (s : string) -> pure string',
     }
-    local total = debugger._parse_total(out)
+    local total, effects = debugger._parse_sigs(out)
     assert.is_true(total.add)
     assert.is_nil(total.main)
     assert.is_nil(total.maybe)
     assert.is_nil(total.show)
+    assert.equal('console/console', effects.main)
+    assert.equal('exn', effects.maybe)
+    assert.equal('pure', effects.show)
+    assert.is_nil(effects.add)
   end)
 end)
