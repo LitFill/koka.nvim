@@ -207,13 +207,28 @@ vim.g.koka = {
   inlay = {
     enabled = true,    -- show inlay hints (default: false)
     debounce_ms = 300, -- delay before a refresh (default: 300)
-    max_results = 32,  -- max hints per buffer (default: 32)
+    max_results = 50,  -- max hints per buffer (default: 50)
   },
 }
 ```
 
 Use `:Koka inlay` to toggle hints. Use `:Koka inlay invalidate` to clear the
 cache and re-run.
+
+#### When it refreshes
+
+Automatic refresh runs on `LspAttach` for a `.kk` buffer, debounced by
+`debounce_ms`. Edits do not trigger it. Use `:Koka inlay invalidate` for a
+manual re-run.
+
+#### Limits and messages
+
+- `max_results` caps hints per buffer (default 50). All calls compile in one
+  `koka` run.
+- Each run has a 20 s timeout.
+- A manual run shows messages: first-build wait, calls skipped over the limit,
+  timeout, and errors. Automatic runs stay quiet.
+- The first build is slower than later ones. Wait for it.
 
 ## File Structure
 
