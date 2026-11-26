@@ -308,6 +308,8 @@ function M._build_wrapper_calls(lines, calls)
   vim.list_extend(wrapper, lines)
   wrapper[#wrapper + 1] = ''
   wrapper[#wrapper + 1] = 'fun kokaInlayEntry() {'
+  -- Koka rejects an empty body. A unit statement makes it valid.
+  wrapper[#wrapper + 1] = '  ()'
   for i, call in ipairs(calls) do
     wrapper[#wrapper + 1] = string.format('  println("@@KI%d@@")', i)
     if call.expr then
