@@ -161,7 +161,7 @@ function M.setup()
   local group = vim.api.nvim_create_augroup('koka_codelens', { clear = true })
 
   -- Auto-refresh code lenses for Koka files
-  vim.api.nvim_create_autocmd({ 'LspAttach', 'BufWritePost', 'InsertLeave' }, {
+  vim.api.nvim_create_autocmd({ 'LspAttach', 'BufEnter', 'BufWritePost', 'InsertLeave', 'CursorHold' }, {
     group = group,
     pattern = '*.kk',
     callback = function(args)
