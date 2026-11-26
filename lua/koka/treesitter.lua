@@ -401,6 +401,54 @@ function M._try_call(node, bufnr)
   }
 end
 
+---Try to read a val/var binding as a static expression hint.
+---@param node TSNode The decl node
+---@param bufnr number The buffer
+---@return table? call {line, col, func_name, args_text, expr, key}, or nil
+function M._try_val(node, bufnr)
+  local pattern, expr
+  for i = 0, node:named_child_count() - 1 do
+    local c = node:named_child(i)
+    local ct = c:type()
+    if ct == 'pattern' then
+      pattern = c
+    elseif ct == 'expr' or ct == 'basicexpr' then
+      expr = c
+    end
+  end
+  if not pattern or not expr then
+    return nil
+  end
+  if not is_static(expr, bufnr) then
+    return nil
+  end
+  -- If the expr is a call, let the call handler take it.
+  local inner = expr
+  while inner and inner:named_child_count() == 1 and inner:type() ~= 'opexpr' and inner:type() ~= 'ntlexpr' do
+    inner = inner:named_child(0)
+  end
+  if inner and (inner:type() == 'opexpr' or inner:type() == 'ntlexpr') then
+    if M._try_call(inner, bufnr) then
+      return nil
+    end
+  end
+  local text = vim.treesitter.get_node_text(expr, bufnr)
+  -- Skip a single literal. It is trivial.
+  if M.is_literal_arg(text) then
+    return nil
+  end
+  local name = vim.treesitter.get_node_text(pattern, bufnr)
+  local row, col = expr:end_()
+  return {
+    line = row,
+    col = col,
+    func_name = name,
+    args_text = '',
+    expr = text,
+    key = 'val:' .. name .. '=' .. text,
+  }
+end
+
 ---Fallback regex scan for calls with literal arguments.
 ---@param bufnr number
 ---@return table[] calls
@@ -465,6 +513,13 @@ function M.find_total_calls(bufnr)
 
   local function visit(node)
     local t = node:type()
+    if t == 'decl' then
+      local r = M._try_val(node, bufnr)
+      if r then
+        results[#results + 1] = r
+        return
+      end
+    end
     if t == 'opexpr' or t == 'ntlexpr' then
       local r = M._try_call(node, bufnr)
       if r then

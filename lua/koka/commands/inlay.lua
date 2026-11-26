@@ -102,7 +102,7 @@ function M.refresh(bufnr, manual)
     if gen == s.gen and results then
       for _, call in ipairs(to_eval) do
         local text = results[call.key]
-        local is_total = (total and total[call.func_name]) or not call.func_name:match('^[%w_]+$')
+        local is_total = call.expr and true or (total and total[call.func_name]) or not call.func_name:match('^[%w_]+$')
         if text and is_total then
           s.cache[call.key] = text
           M.render_one(bufnr, call, text)

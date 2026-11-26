@@ -310,7 +310,11 @@ function M._build_wrapper_calls(lines, calls)
   wrapper[#wrapper + 1] = 'fun kokaInlayEntry() {'
   for i, call in ipairs(calls) do
     wrapper[#wrapper + 1] = string.format('  println("@@KI%d@@")', i)
-    wrapper[#wrapper + 1] = string.format('  println(%s(%s))', call.func_name, call.args_text)
+    if call.expr then
+      wrapper[#wrapper + 1] = string.format('  println(%s)', call.expr)
+    else
+      wrapper[#wrapper + 1] = string.format('  println(%s(%s))', call.func_name, call.args_text)
+    end
   end
   wrapper[#wrapper + 1] = '}'
   return wrapper
