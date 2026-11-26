@@ -305,3 +305,32 @@ describe('koka.commands.inlay toggle', function()
     package.loaded['koka.debugger'] = orig_eval
   end)
 end)
+
+describe('koka.treesitter path agreement', function()
+  it('tree path and fallback find the same literal call', function()
+    package.loaded['koka.treesitter'] = nil
+    local ts = require('koka.treesitter')
+    local bufnr = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+      'fun add(a: int, b: int): total int { a + b }',
+      'fun main() {',
+      '  val x = add(1, 2)',
+      '}',
+    })
+
+    local tree_calls = ts.find_total_calls(bufnr)
+    local fb_calls = ts._find_total_calls_fallback(bufnr)
+
+    local function has_key(calls, key)
+      for _, c in ipairs(calls) do
+        if c.key == key then
+          return true
+        end
+      end
+      return false
+    end
+
+    assert.is_true(has_key(tree_calls, 'add(1, 2)'))
+    assert.is_true(has_key(fb_calls, 'add(1, 2)'))
+  end)
+end)
