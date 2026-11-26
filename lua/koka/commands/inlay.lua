@@ -98,11 +98,12 @@ function M.refresh(bufnr, manual)
     return
   end
 
-  debugger.eval_calls(proj, path, lines, to_eval, function(results, err)
+  debugger.eval_calls(proj, path, lines, to_eval, function(results, total, err)
     if gen == s.gen and results then
       for _, call in ipairs(to_eval) do
         local text = results[call.key]
-        if text then
+        local is_total = (total and total[call.func_name]) or not call.func_name:match('^[%w_]+$')
+        if text and is_total then
           s.cache[call.key] = text
           M.render_one(bufnr, call, text)
         end

@@ -253,9 +253,36 @@ is_static = function(node, bufnr)
     return true
   end
   if t == 'opexpr' or t == 'ntlexpr' then
-    if vim.treesitter.get_node_text(node, bufnr):sub(-1) == ')' then
+    local text = vim.treesitter.get_node_text(node, bufnr)
+    if text:sub(-1) == ')' then
       return is_static_call(node, bufnr)
     end
+    -- Operator expression: every atom operand must be static.
+    local has_op = false
+    for i = 0, node:named_child_count() - 1 do
+      local ct = node:named_child(i):type()
+      if ct == 'op' or ct == 'idop' or ct == 'qidop' then
+        has_op = true
+      end
+    end
+    if has_op then
+      for i = 0, node:named_child_count() - 1 do
+        local c = node:named_child(i)
+        if c:type() == 'atom' and not is_static(c, bufnr) then
+          return false
+        end
+      end
+      return true
+    end
+  end
+  -- Parentheses, tuples, and lists: every part must be static.
+  if t == 'aexprs' or t == 'cexprs' then
+    for i = 0, node:named_child_count() - 1 do
+      if not is_static(node:named_child(i), bufnr) then
+        return false
+      end
+    end
+    return true
   end
   if node:named_child_count() == 1 then
     return is_static(node:named_child(0), bufnr)

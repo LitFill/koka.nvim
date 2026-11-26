@@ -73,6 +73,26 @@ describe('koka.treesitter inlay helpers', function()
       assert.is_true(found_add)
       assert.is_false(found_twice)
     end)
+    it('finds a call with an operator argument', function()
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      local lines = {
+        'fun add(a: int, b: int): total int { a + b }',
+        'fun main() {',
+        '  val x = add(1 + 2, 3)',
+        '}',
+      }
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+
+      local calls = treesitter.find_total_calls(bufnr)
+
+      local found = false
+      for _, call in ipairs(calls) do
+        if call.func_name == 'add' and call.args_text == '1 + 2, 3' then
+          found = true
+        end
+      end
+      assert.is_true(found)
+    end)
 
     it('finds a zero-argument call', function()
       local bufnr = vim.api.nvim_create_buf(false, true)
@@ -183,5 +203,23 @@ describe('koka.debugger eval_total', function()
     assert.equal('3', got)
     assert.is_not_nil(table.concat(captured_cmd, ' '):find('--main-entry=kokaInlayEntry', 1, true))
     assert.is_not_nil(captured_wrapper:match('fun kokaInlayEntry%(%)'))
+  end)
+end)
+
+describe('koka.debugger _parse_total', function()
+  it('marks total definitions and skips effectful ones', function()
+    package.loaded['koka.debugger'] = nil
+    local debugger = require('koka.debugger')
+    local out = {
+      'sig/add  : (a : int, b : int) -> int',
+      'sig/main : () -> console/console ()',
+      'sig/maybe: (x : int) -> exn int',
+      'sig/show : (s : string) -> pure string',
+    }
+    local total = debugger._parse_total(out)
+    assert.is_true(total.add)
+    assert.is_nil(total.main)
+    assert.is_nil(total.maybe)
+    assert.is_nil(total.show)
   end)
 end)

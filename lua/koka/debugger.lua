@@ -228,6 +228,7 @@ function M.eval_total(project_config, program_path, lines, func_name, args_text,
   if project_config.compiler_args then
     vim.list_extend(cmd, project_config.compiler_args)
   end
+  table.insert(cmd, '--showtypesigs')
   table.insert(cmd, '-e')
   table.insert(cmd, tmp_file)
   table.insert(cmd, '--main-entry=kokaInlayEntry')
@@ -273,7 +274,7 @@ function M.eval_total(project_config, program_path, lines, func_name, args_text,
         if msg == '' then
           msg = 'koka exited with code ' .. exit_code
         end
-        finish(nil, msg)
+        finish(nil, nil, msg)
         return
       end
       -- koka prints load/parse/check lines to stdout. The result is the last line.
@@ -287,13 +288,13 @@ function M.eval_total(project_config, program_path, lines, func_name, args_text,
   })
 
   if job <= 0 then
-    finish(nil, 'could not start koka')
+    finish(nil, nil, 'could not start koka')
     return
   end
 
   vim.defer_fn(function()
     if not done then
-      finish(nil, 'koka timed out')
+      finish(nil, nil, 'koka timed out')
     end
   end, timeout_ms)
 end
@@ -315,12 +316,47 @@ function M._build_wrapper_calls(lines, calls)
   return wrapper
 end
 
+local effect_words = {
+  pure = true,
+  exn = true,
+  div = true,
+  console = true,
+  ndet = true,
+  fsys = true,
+  st = true,
+  io = true,
+  random = true,
+  read = true,
+  write = true,
+  state = true,
+  global = true,
+  async = true,
+}
+
+---Parse --showtypesigs output. Return the set of total definition names.
+---@param out string[] The stdout lines
+---@return table<string,boolean>
+function M._parse_total(out)
+  local total = {}
+  for _, line in ipairs(out) do
+    local name = line:match('^sig/([^%s:]+)')
+    local rest = line:match('%-%>%s*(.*)$')
+    if name and rest then
+      local first = rest:match('^(%S+)')
+      if first and not first:find('/') and not effect_words[first] then
+        total[name] = true
+      end
+    end
+  end
+  return total
+end
+
 ---Evaluate many total calls in one koka run. Returns a map of key to result text.
 ---@param project_config koka.project.Config The project config
 ---@param program_path string Path to the Koka program
 ---@param lines string[] The buffer lines
 ---@param calls table[] The calls
----@param callback fun(results: table<string,string>?, error_text: string?)
+---@param callback fun(results: table<string,string>?, total: table<string,boolean>?, error_text: string?)
 ---@param timeout_ms? number Kill the run after this many milliseconds
 function M.eval_calls(project_config, program_path, lines, calls, callback, timeout_ms)
   timeout_ms = timeout_ms or 20000
@@ -345,6 +381,7 @@ function M.eval_calls(project_config, program_path, lines, calls, callback, time
   if project_config.compiler_args then
     vim.list_extend(cmd, project_config.compiler_args)
   end
+  table.insert(cmd, '--showtypesigs')
   table.insert(cmd, '-e')
   table.insert(cmd, tmp_file)
   table.insert(cmd, '--main-entry=kokaInlayEntry')
@@ -355,7 +392,7 @@ function M.eval_calls(project_config, program_path, lines, calls, callback, time
   local done = false
   local job
 
-  local function finish(results, error_text)
+  local function finish(results, total, error_text)
     if done then
       return
     end
@@ -364,7 +401,7 @@ function M.eval_calls(project_config, program_path, lines, calls, callback, time
       pcall(vim.fn.jobstop, job)
     end
     vim.fn.delete(tmp_dir, 'rf')
-    callback(results, error_text)
+    callback(results, total, error_text)
   end
 
   job = vim.fn.jobstart(cmd, {
@@ -390,7 +427,7 @@ function M.eval_calls(project_config, program_path, lines, calls, callback, time
         if msg == '' then
           msg = 'koka exited with code ' .. exit_code
         end
-        finish(nil, msg)
+        finish(nil, nil, msg)
         return
       end
       -- Parse marker lines. The next non-empty line is that call's result.
@@ -413,18 +450,18 @@ function M.eval_calls(project_config, program_path, lines, calls, callback, time
           end
         end
       end
-      finish(results, nil)
+      finish(results, M._parse_total(out), nil)
     end,
   })
 
   if job <= 0 then
-    finish(nil, 'could not start koka')
+    finish(nil, nil, 'could not start koka')
     return
   end
 
   vim.defer_fn(function()
     if not done then
-      finish(nil, 'koka timed out')
+      finish(nil, nil, 'koka timed out')
     end
   end, timeout_ms)
 end
