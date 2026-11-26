@@ -98,6 +98,18 @@ M.restart = function(bufnr)
 
   -- Wait for all clients to detach before starting again
   local remaining = #clients
+  local started = false
+
+  local function start_once()
+    if started then
+      return
+    end
+    started = true
+    vim.schedule(function()
+      M.start(bufnr)
+    end)
+  end
+
   for _, client in ipairs(clients) do
     local on_exit = client.on_exit
     client.on_exit = function(...)
@@ -106,13 +118,14 @@ M.restart = function(bufnr)
       end
       remaining = remaining - 1
       if remaining == 0 then
-        vim.schedule(function()
-          M.start(bufnr)
-        end)
+        start_once()
       end
     end
     client:stop()
   end
+
+  -- Safety net. If an on_exit never fires, start anyway.
+  vim.defer_fn(start_once, 2000)
 end
 
 ---Get LSP client status for the current buffer
