@@ -51,6 +51,41 @@ local function open_float(lines, title)
   return buf
 end
 
+---Parse compiler output lines into a quickfix list and open it.
+---@param lines string[]
+---@return boolean opened true when at least one entry was set
+function M.populate_quickfix(lines)
+  local items = {}
+  for _, line in ipairs(lines) do
+    local file, lnum, col, msg = line:match('^(.+):(%d+):(%d+):%s*(.*)$')
+    if file then
+      items[#items + 1] = {
+        filename = file,
+        lnum = tonumber(lnum),
+        col = tonumber(col),
+        text = msg,
+      }
+    else
+      local f2, l2, m2 = line:match('^(.+):(%d+):%s*(.*)$')
+      if f2 then
+        items[#items + 1] = {
+          filename = f2,
+          lnum = tonumber(l2),
+          text = m2,
+        }
+      end
+    end
+  end
+
+  if #items == 0 then
+    return false
+  end
+
+  vim.fn.setqflist(items, 'r')
+  vim.cmd('copen')
+  return true
+end
+
 ---Build a Koka file
 ---@param file_path string
 function M.build_file(file_path)
@@ -65,18 +100,84 @@ function M.build_file(file_path)
     -- Change to project directory
     local cwd = config.cwd or vim.fs.dirname(file_path)
 
-    -- Run in terminal
+    local output = {}
+    local function collect(_, data)
+      if not data then
+        return
+      end
+      for _, line in ipairs(data) do
+        if line ~= '' then
+          output[#output + 1] = line
+        end
+      end
+    end
+
     vim.fn.jobstart(cmd, {
       cwd = cwd,
-      term = true,
+      on_stdout = collect,
+      on_stderr = collect,
       on_exit = function(_, exit_code)
         if exit_code == 0 then
           koka_ui.notify('✓ Build completed successfully', vim.log.levels.INFO)
         else
+          M.populate_quickfix(output)
           koka_ui.notify(string.format('✗ Build failed with exit code %d', exit_code), vim.log.levels.ERROR)
         end
       end,
     })
+  end)
+end
+
+---Run each named test and report a pass/fail summary.
+---@param file_path string
+---@param test_names string[]
+function M.run_tests(file_path, test_names)
+  local project = require('koka.project')
+
+  project.get_resolved_config(file_path, function(config)
+    local cwd = config.cwd or vim.fs.dirname(file_path)
+    local results = {}
+    local index = 0
+
+    local function summarize()
+      local passed, failed = 0, 0
+      for i = 1, index do
+        if results[i] then
+          passed = passed + 1
+        else
+          failed = failed + 1
+        end
+      end
+      koka_ui.notify(
+        string.format('Tests: %d passed, %d failed', passed, failed),
+        failed > 0 and vim.log.levels.ERROR or vim.log.levels.INFO
+      )
+    end
+
+    local function run_next()
+      index = index + 1
+      local name = test_names[index]
+      if not name then
+        summarize()
+        return
+      end
+
+      local cmd = koka_cmd.build(config, {
+        mode = '-e',
+        file = file_path,
+        main_entry = name,
+      })
+
+      vim.fn.jobstart(cmd, {
+        cwd = cwd,
+        on_exit = function(_, code)
+          results[index] = code == 0
+          run_next()
+        end,
+      })
+    end
+
+    run_next()
   end)
 end
 
@@ -92,6 +193,12 @@ function M.show_config()
       string.format('Target: %s', config.target or 'c'),
       string.format('Working Directory: %s', config.cwd or 'not set'),
     }
+
+    local inlay = require('koka.commands.inlay')
+    local lsp = require('koka.lsp')
+    table.insert(lines, '')
+    table.insert(lines, string.format('Inlay Hints: %s', inlay.is_enabled() and 'enabled' or 'disabled'))
+    table.insert(lines, string.format('LSP: %s', lsp.get_status() and 'running' or 'stopped'))
 
     if config.include_dirs and #config.include_dirs > 0 then
       table.insert(lines, 'Include Directories:')
@@ -127,6 +234,13 @@ function M.show_help()
     '  :Koka lsp start        Start LSP server',
     '  :Koka lsp stop         Stop LSP server',
     '  :Koka lsp restart      Restart LSP server',
+    '',
+    'Suggested keymaps:',
+    '  <leader>kr  Run function at cursor',
+    '  <leader>kb  Build current file',
+    '  <leader>kt  Run tests',
+    '  <leader>ki  Toggle inlay hints',
+    '  <leader>kg  Goto .kk file',
     '',
     'Press q or <Esc> to close.',
   }
@@ -222,11 +336,21 @@ function M.goto_file(name)
     return
   end
 
-  if #matches > 1 then
-    koka_ui.notify(string.format('goto: %d files match %s, opening the first', #matches, base), vim.log.levels.WARN)
+  if #matches == 1 then
+    vim.cmd.edit(vim.fn.fnameescape(matches[1]))
+    return
   end
 
-  vim.cmd.edit(vim.fn.fnameescape(matches[1]))
+  vim.ui.select(matches, {
+    prompt = string.format('%d files match %s:', #matches, base),
+    format_item = function(path)
+      return path
+    end,
+  }, function(choice)
+    if choice then
+      vim.cmd.edit(vim.fn.fnameescape(choice))
+    end
+  end)
 end
 
 ---@type table<string, koka.commands.Subcommand>
@@ -290,11 +414,15 @@ local command_tbl = {
         koka_ui.notify('No test functions found in buffer', vim.log.levels.WARN)
         return
       end
-      local target = #args > 0 and args[1] or tests[1]
       local file_path = vim.api.nvim_buf_get_name(bufnr)
-      local codelens = require('koka.commands.codelens')
-      codelens.handle_run_command('test', file_path, target)
-      koka_ui.notify(string.format('Running test: %s (%d tests found)', target, #tests), vim.log.levels.INFO)
+      local target = args[1]
+      if target then
+        local codelens = require('koka.commands.codelens')
+        codelens.handle_run_command('test', file_path, target)
+        koka_ui.notify(string.format('Running test: %s (%d tests found)', target, #tests), vim.log.levels.INFO)
+      else
+        M.run_tests(file_path, tests)
+      end
     end,
     complete = function(lead)
       local bufnr = vim.api.nvim_get_current_buf()
@@ -392,6 +520,19 @@ local lsp_subcmd_tbl = {
       require('koka.lsp').restart()
     end,
   },
+  status = {
+    impl = function()
+      local running = require('koka.lsp').get_status()
+      local project = require('koka.project')
+      local config = project.get_resolved_config(vim.api.nvim_buf_get_name(0))
+      local root = config.cwd or 'not set'
+      if running then
+        koka_ui.notify(string.format('LSP running (root: %s)', root), vim.log.levels.INFO)
+      else
+        koka_ui.notify(string.format('LSP stopped (root: %s)', root), vim.log.levels.WARN)
+      end
+    end,
+  },
 }
 
 register_subcommand_tbl('lsp', lsp_subcmd_tbl)
@@ -399,6 +540,10 @@ register_subcommand_tbl('lsp', lsp_subcmd_tbl)
 local function koka_command_imp(opts)
   local fargs = opts.fargs
   local cmd = fargs[1]
+  if not cmd or cmd == '' then
+    M.show_help()
+    return
+  end
   local args = #fargs > 1 and vim.list_slice(fargs, 2) or {}
   local command = command_tbl[cmd]
   if not command then
@@ -416,7 +561,7 @@ end
 ---Setup Koka user commands
 function M.setup()
   vim.api.nvim_create_user_command('Koka', koka_command_imp, {
-    nargs = '+',
+    nargs = '?',
     complete = function(arg_lead, cmdline, _)
       local subcmd, subcmd_arg_lead = cmdline:match("^['<,'>]*Koka[!]*%s(%S+)%s(.*)$")
       if subcmd and subcmd_arg_lead and command_tbl[subcmd] and command_tbl[subcmd].complete then

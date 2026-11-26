@@ -26,6 +26,8 @@ local KokaDefaultConfig = {
     debounce_ms = 300,
     ---@type number Maximum number of hints to show in one buffer.
     max_results = 50,
+    ---@type boolean Whether to refresh hints after writing a buffer.
+    on_write = false,
   },
 }
 

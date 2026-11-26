@@ -224,6 +224,12 @@ function M.toggle()
   end
 end
 
+---Return whether inlay hints are currently enabled.
+---@return boolean
+function M.is_enabled()
+  return config.inlay.enabled == true
+end
+
 ---Set the highlight group, the autocommands, and the buffer cleanup.
 function M.setup()
   vim.api.nvim_set_hl(0, 'KokaInlayHint', { link = 'Comment', default = true })
@@ -241,6 +247,16 @@ function M.setup()
     end,
   })
 
+  vim.api.nvim_create_autocmd('BufWritePost', {
+    group = group,
+    pattern = '*.kk',
+    callback = function(args)
+      if not config.inlay.enabled or not config.inlay.on_write then
+        return
+      end
+      M.schedule_refresh(args.buf)
+    end,
+  })
   vim.api.nvim_create_autocmd('BufDelete', {
     group = group,
     pattern = '*.kk',
