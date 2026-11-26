@@ -99,6 +99,10 @@ function M.refresh(bufnr, manual)
         M.render_effect(bufnr, call, effects[call.func_name])
       end
     end
+    local skipped = #calls - shown
+    if skipped > 0 and manual then
+      koka_ui.notify(string.format('showing %d of %d calls (limit %d)', shown, #calls, max), vim.log.levels.WARN)
+    end
 
     local pending = #to_eval
     if manual then
@@ -134,6 +138,9 @@ function M.refresh(bufnr, manual)
   if s.sigs then
     run_total(s.sigs.total, s.sigs.effects)
     return
+  end
+  if manual then
+    koka_ui.notify('first run may take longer than later ones, please wait', vim.log.levels.INFO)
   end
 
   -- Phase 1: get signatures. The wrapper has no calls, so nothing runs.

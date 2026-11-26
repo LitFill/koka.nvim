@@ -25,7 +25,7 @@ local KokaDefaultConfig = {
     ---@type number Delay in milliseconds before a refresh runs.
     debounce_ms = 300,
     ---@type number Maximum number of hints to show in one buffer.
-    max_results = 32,
+    max_results = 50,
   },
 }
 
@@ -59,7 +59,7 @@ if KokaConfig.inlay then
   end
   if type(KokaConfig.inlay.max_results) ~= 'number' or KokaConfig.inlay.max_results < 1 then
     koka_ui.notify('config.inlay.max_results must be a positive number', vim.log.levels.WARN)
-    KokaConfig.inlay.max_results = 32
+    KokaConfig.inlay.max_results = 50
   end
 end
 
