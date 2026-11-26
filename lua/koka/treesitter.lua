@@ -495,13 +495,14 @@ function M._try_ucfm(node, bufnr)
     end
   end
 
-  -- The head is static if it is a literal, or a name called with arguments
-  -- (a call head like add(1, 2)). The arguments are checked static above.
+  -- The head is static if it is a literal, or a call head. A call head is a
+  -- name followed by '(' in the chain text. This covers add(1, 2) and foo().
+  -- The arguments are checked static above.
   local head_ok = is_static(head, bufnr)
   if not head_ok and head:type() == 'atom' then
-    local nn = head:named_child(0)
-    local nxt = node:named_child(1)
-    if nn and nn:type() == 'name' and nxt and nxt:type() == 'arguments' then
+    local head_text = vim.treesitter.get_node_text(head, bufnr)
+    local rest = text:sub(#head_text + 1)
+    if rest:match('^%s*%(') then
       head_ok = true
     end
   end
