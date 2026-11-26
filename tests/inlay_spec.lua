@@ -196,6 +196,25 @@ describe('koka.treesitter inlay helpers', function()
       local calls = treesitter.find_total_calls(bufnr)
       assert.equal(0, #calls)
     end)
+    it('finds a UCFM dot chain', function()
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      local lines = {
+        'fun main() {',
+        '  [1, 2, 3, 4].reverse.println',
+        '}',
+      }
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+
+      local calls = treesitter.find_total_calls(bufnr)
+
+      local found = false
+      for _, call in ipairs(calls) do
+        if call.expr == '[1, 2, 3, 4].reverse.println' then
+          found = true
+        end
+      end
+      assert.is_true(found)
+    end)
   end)
 end)
 

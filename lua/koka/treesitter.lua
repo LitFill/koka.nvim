@@ -453,6 +453,59 @@ function M._try_val(node, bufnr)
   }
 end
 
+---Try to read a UCFM dot chain as a static expression hint.
+---A chain is an atom, then dot names or dot-call arguments only.
+---@param node TSNode The candidate node
+---@param bufnr number The buffer
+---@return table? call {line, col, func_name, args_text, expr, key}, or nil
+function M._try_ucfm(node, bufnr)
+  local count = node:named_child_count()
+  if count < 2 then
+    return nil
+  end
+
+  local atom = node:named_child(0)
+  if atom:type() ~= 'atom' then
+    return nil
+  end
+
+  local text = vim.treesitter.get_node_text(node, bufnr)
+  -- A UCFM chain has a dot. A plain call has no dot.
+  if not text:find('%.') then
+    return nil
+  end
+
+  -- Every child after the atom must be a name (dot) or arguments (dotcall).
+  for i = 1, count - 1 do
+    local c = node:named_child(i)
+    local ct = c:type()
+    if ct ~= 'name' and ct ~= 'arguments' then
+      return nil
+    end
+    if ct == 'arguments' then
+      for j = 0, c:named_child_count() - 1 do
+        if not is_static(c:named_child(j), bufnr) then
+          return nil
+        end
+      end
+    end
+  end
+
+  if not is_static(atom, bufnr) then
+    return nil
+  end
+
+  local row, col = node:end_()
+  return {
+    line = row,
+    col = col,
+    func_name = 'ucfm',
+    args_text = '',
+    expr = text,
+    key = 'ucfm:' .. text,
+  }
+end
+
 ---Fallback regex scan for calls with literal arguments.
 ---@param bufnr number
 ---@return table[] calls
@@ -528,6 +581,11 @@ function M.find_total_calls(bufnr)
       local r = M._try_call(node, bufnr)
       if r then
         results[#results + 1] = r
+        return
+      end
+      local u = M._try_ucfm(node, bufnr)
+      if u then
+        results[#results + 1] = u
         return
       end
     end
