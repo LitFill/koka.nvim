@@ -250,7 +250,7 @@ describe('koka.debugger eval_total', function()
     mock_fn('delete', function() end)
     mock_fn('jobstart', function(cmd, opts)
       captured_cmd = cmd
-      opts.on_stdout(1, { 'load    : std/core', 'parse   : main.kk', 'check   : main', '3' })
+      opts.on_stdout(1, { 'load    : std/core', 'parse   : main.kk', 'check   : main', '@@KI1@@', '3' })
       opts.on_exit(1, 0)
       return 1
     end)

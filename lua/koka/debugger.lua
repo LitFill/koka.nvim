@@ -196,87 +196,18 @@ end
 ---@param callback fun(result: string?) Called with trimmed stdout, or nil on failure
 ---@param timeout_ms? number Kill the run after this many milliseconds
 function M.eval_total(project_config, program_path, lines, func_name, args_text, callback, timeout_ms)
-  timeout_ms = timeout_ms or 15000
-  local orig_dir = vim.fs.dirname(program_path)
-  local module_name = M._module_name(lines, program_path)
-  local tmp_dir = vim.fn.tempname()
-  vim.fn.mkdir(tmp_dir, 'p')
-  local tmp_file = vim.fs.joinpath(tmp_dir, module_name .. '.kk')
-  local wrapper = M._build_wrapper(lines, func_name, args_text)
-  vim.fn.writefile(wrapper, tmp_file)
-
-  local cmd = koka_cmd.build(project_config, {
-    mode = '-e',
-    file = tmp_file,
-    main_entry = 'kokaInlayEntry',
-    showtypesigs = true,
-    buildtag = 'nvim',
-    include = { orig_dir },
-  })
-
-  local cwd = project_config.cwd or orig_dir
-  local out = {}
-  local err = {}
-  local done = false
-  local job
-
-  local function finish(result, error_text)
-    if done then
+  local call = {
+    func_name = func_name,
+    args_text = args_text,
+    key = func_name .. '(' .. args_text .. ')',
+  }
+  M.eval_calls(project_config, program_path, lines, { call }, function(results, _total, _effects, err)
+    if err then
+      callback(nil, err)
       return
     end
-    done = true
-    if job then
-      pcall(vim.fn.jobstop, job)
-    end
-    vim.fn.delete(tmp_dir, 'rf')
-    pcall(callback, result, error_text)
-  end
-
-  job = vim.fn.jobstart(cmd, {
-    cwd = cwd,
-    on_stdout = function(_, data)
-      if data then
-        vim.list_extend(out, data)
-      end
-    end,
-    on_stderr = function(_, data)
-      if data then
-        vim.list_extend(err, data)
-      end
-    end,
-    on_exit = function(_, exit_code)
-      if exit_code ~= 0 then
-        local errout = table.concat(err, '\n'):gsub('^%s+', ''):gsub('%s+$', '')
-        local outtail = table.concat(out, '\n'):match('([^\n]+)%s*$') or ''
-        local msg = outtail
-        if errout ~= '' then
-          msg = (msg ~= '' and (msg .. '\n' .. errout) or errout)
-        end
-        if msg == '' then
-          msg = 'koka exited with code ' .. exit_code
-        end
-        finish(nil, nil, msg)
-        return
-      end
-      -- koka prints load/parse/check lines to stdout. The result is the last line.
-      local text = table.concat(out, '\n'):match('([^\n]+)%s*$') or ''
-      if text == '' then
-        finish(nil, 'koka produced no output')
-        return
-      end
-      finish(text, nil)
-    end,
-  })
-
-  if job <= 0 then
-    finish(nil, nil, 'could not start koka')
-    return
-  end
-
-  vim.defer_fn(function()
-    if not done then
-      finish(nil, nil, 'koka timed out')
-    end
+    local text = results and results[call.key] or nil
+    callback(text, nil)
   end, timeout_ms)
 end
 
