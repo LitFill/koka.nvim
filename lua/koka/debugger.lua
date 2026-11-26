@@ -11,6 +11,7 @@
 ---@field function_name? string A single function to run (must have no effects and returns a type that is showable)
 
 local M = {}
+local koka_cmd = require('koka.koka_cmd')
 
 ---Execute a program or function using Koka LSP
 ---@param client vim.lsp.Client The LSP client
@@ -19,18 +20,7 @@ local M = {}
 ---@param callback? function Callback function to handle the result
 function M.execute(client, project_config, args, callback)
   local target = project_config.target or 'c'
-  local additional_args = '--buildtag=nvim --target=' .. target
-
-  -- Append include_dirs and compiler_args from project_config (bug fix: was ignoring them)
-  if project_config.include_dirs then
-    for _, include_dir in ipairs(project_config.include_dirs) do
-      additional_args = additional_args .. ' --include=' .. include_dir
-    end
-  end
-  if project_config.compiler_args then
-    additional_args = additional_args .. ' ' .. table.concat(project_config.compiler_args, ' ')
-  end
-
+  local additional_args = table.concat(koka_cmd.common_args(project_config, { buildtag = 'nvim' }), ' ')
   if args.compiler_args then
     additional_args = additional_args .. ' ' .. table.concat(args.compiler_args, ' ')
   end
@@ -215,23 +205,14 @@ function M.eval_total(project_config, program_path, lines, func_name, args_text,
   local wrapper = M._build_wrapper(lines, func_name, args_text)
   vim.fn.writefile(wrapper, tmp_file)
 
-  local cmd = { 'koka' }
-  if project_config.target and project_config.target ~= 'c' then
-    table.insert(cmd, '--target=' .. project_config.target)
-  end
-  table.insert(cmd, '--include=' .. orig_dir)
-  if project_config.include_dirs then
-    for _, include_dir in ipairs(project_config.include_dirs) do
-      table.insert(cmd, '--include=' .. include_dir)
-    end
-  end
-  if project_config.compiler_args then
-    vim.list_extend(cmd, project_config.compiler_args)
-  end
-  table.insert(cmd, '--showtypesigs')
-  table.insert(cmd, '-e')
-  table.insert(cmd, tmp_file)
-  table.insert(cmd, '--main-entry=kokaInlayEntry')
+  local cmd = koka_cmd.build(project_config, {
+    mode = '-e',
+    file = tmp_file,
+    main_entry = 'kokaInlayEntry',
+    showtypesigs = true,
+    buildtag = 'nvim',
+    include = { orig_dir },
+  })
 
   local cwd = project_config.cwd or orig_dir
   local out = {}
@@ -382,23 +363,14 @@ function M.eval_calls(project_config, program_path, lines, calls, callback, time
   local wrapper = M._build_wrapper_calls(lines, calls)
   vim.fn.writefile(wrapper, tmp_file)
 
-  local cmd = { 'koka' }
-  if project_config.target and project_config.target ~= 'c' then
-    table.insert(cmd, '--target=' .. project_config.target)
-  end
-  table.insert(cmd, '--include=' .. orig_dir)
-  if project_config.include_dirs then
-    for _, include_dir in ipairs(project_config.include_dirs) do
-      table.insert(cmd, '--include=' .. include_dir)
-    end
-  end
-  if project_config.compiler_args then
-    vim.list_extend(cmd, project_config.compiler_args)
-  end
-  table.insert(cmd, '--showtypesigs')
-  table.insert(cmd, '-e')
-  table.insert(cmd, tmp_file)
-  table.insert(cmd, '--main-entry=kokaInlayEntry')
+  local cmd = koka_cmd.build(project_config, {
+    mode = '-e',
+    file = tmp_file,
+    main_entry = 'kokaInlayEntry',
+    showtypesigs = true,
+    buildtag = 'nvim',
+    include = { orig_dir },
+  })
 
   local cwd = project_config.cwd or orig_dir
   local out = {}

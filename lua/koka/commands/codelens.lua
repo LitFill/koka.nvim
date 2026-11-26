@@ -4,6 +4,7 @@
 ---@brief ]]
 
 local M = {}
+local koka_cmd = require('koka.koka_cmd')
 
 ---Find runnable functions in buffer using TreeSitter
 ---@param bufnr number
@@ -98,33 +99,11 @@ function M._handle_run_command_fallback(action_type, file_path, func_name)
 
   -- Use get_resolved_config which provides defaults
   project.get_resolved_config(file_path, function(config)
-    local cmd = { 'koka' }
-
-    -- Add target
-    if config.target and config.target ~= 'c' then
-      table.insert(cmd, '--target=' .. config.target)
-    end
-
-    -- Add include directories
-    if config.include_dirs then
-      for _, include_dir in ipairs(config.include_dirs) do
-        table.insert(cmd, '--include=' .. include_dir)
-      end
-    end
-
-    -- Add compiler arguments
-    if config.compiler_args then
-      for _, arg in ipairs(config.compiler_args) do
-        table.insert(cmd, arg)
-      end
-    end
-
-    -- Add execute flag with file and optional entrypoint
-    table.insert(cmd, '-e')
-    table.insert(cmd, file_path)
-    if func_name ~= 'main' then
-      table.insert(cmd, '--main-entry=' .. func_name)
-    end
+    local cmd = koka_cmd.build(config, {
+      mode = '-e',
+      file = file_path,
+      main_entry = func_name ~= 'main' and func_name or nil,
+    })
 
     -- Change to project directory
     local cwd = config.cwd or vim.fs.dirname(file_path)
