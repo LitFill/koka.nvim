@@ -112,6 +112,25 @@ describe('koka.treesitter inlay helpers', function()
       end
       assert.is_true(found)
     end)
+    it('finds a static string concat val', function()
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      local lines = {
+        'fun main() {',
+        '  val t = "hello " ++ "world "',
+        '}',
+      }
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+
+      local calls = treesitter.find_total_calls(bufnr)
+
+      local found = false
+      for _, call in ipairs(calls) do
+        if call.expr == '"hello " ++ "world "' and call.func_name == 't' then
+          found = true
+        end
+      end
+      assert.is_true(found)
+    end)
 
     it('skips a literal val binding', function()
       local bufnr = vim.api.nvim_create_buf(false, true)

@@ -221,13 +221,17 @@ function M.is_literal_arg(text)
   if s == '' then
     return false
   end
-  -- String literal.
+  -- String literal. A single string has no quote in the middle.
   if s:sub(1, 1) == '"' and s:sub(-1) == '"' and #s >= 2 then
-    return true
+    if not s:sub(2, -2):find('"') then
+      return true
+    end
   end
-  -- Char literal.
+  -- Char literal. A single char has no quote in the middle.
   if s:sub(1, 1) == "'" and s:sub(-1) == "'" and #s >= 2 then
-    return true
+    if not s:sub(2, -2):find("'") then
+      return true
+    end
   end
   -- Hex integer.
   if s:match('^%-?0[xX]%x+') then
