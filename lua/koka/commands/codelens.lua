@@ -17,13 +17,19 @@ local function find_runnables(bufnr)
   return treesitter.find_runnables(bufnr)
 end
 
+---Build the lens label for a runnable.
+---@param runnable table
+---@return string
+local function lens_text(runnable)
+  return string.format('▶ %s', runnable.name)
+end
 ---Create code lens for runnable function
 ---@param runnable table
 ---@param bufnr number
 ---@return table codelens
 local function create_codelens(runnable, bufnr)
   local bufname = vim.api.nvim_buf_get_name(bufnr)
-  local text = string.format('▶ %s', runnable.name)
+  local text = lens_text(runnable)
 
   return {
     range = {
@@ -156,7 +162,7 @@ function M.display_custom_codelenses(bufnr)
 
   local runnables = find_runnables(bufnr)
   for _, runnable in ipairs(runnables) do
-    local text = string.format('▶ %s', runnable.name)
+    local text = lens_text(runnable)
     koka_ui.virt_text(bufnr, ns_id, runnable.line, runnable.col, text, 'Comment')
   end
 end
