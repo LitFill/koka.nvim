@@ -175,7 +175,7 @@ function M.run_at_cursor()
     end
   end
 
-  vim.notify('No runnable function found at cursor', vim.log.levels.WARN)
+  koka_ui.notify('No runnable function found at cursor', vim.log.levels.WARN)
 end
 
 return M

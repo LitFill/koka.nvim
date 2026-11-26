@@ -3,6 +3,8 @@
 ---TreeSitter utilities for Koka
 ---@brief ]]
 
+local koka_ui = require('koka.ui')
+
 local M = {}
 
 ---Check if TreeSitter is available
@@ -23,7 +25,7 @@ end
 ---@return boolean success
 function M.install_parser()
   if not M.is_available() then
-    vim.notify('[koka.nvim] nvim-treesitter is required for TreeSitter support', vim.log.levels.DEBUG)
+    koka_ui.notify('nvim-treesitter is required for TreeSitter support', vim.log.levels.DEBUG)
     return false
   end
 

@@ -6,6 +6,8 @@
 ---
 ---@brief ]]
 
+local koka_ui = require('koka.ui')
+
 ---@class koka.Config koka.nvim plugin configuration.
 local KokaDefaultConfig = {
   ---@class koka.lsp.ClientConfig koka language client options
@@ -37,26 +39,26 @@ local KokaConfig = vim.tbl_deep_extend('force', {}, KokaDefaultConfig, opts)
 -- Validate config
 if KokaConfig.lsp then
   if type(KokaConfig.lsp.auto_attach) ~= 'boolean' and type(KokaConfig.lsp.auto_attach) ~= 'function' then
-    vim.notify('koka.nvim: config.lsp.auto_attach must be boolean or function', vim.log.levels.WARN)
+    koka_ui.notify('config.lsp.auto_attach must be boolean or function', vim.log.levels.WARN)
     KokaConfig.lsp.auto_attach = true
   end
   if type(KokaConfig.lsp.on_attach) ~= 'function' then
-    vim.notify('koka.nvim: config.lsp.on_attach must be function', vim.log.levels.WARN)
+    koka_ui.notify('config.lsp.on_attach must be function', vim.log.levels.WARN)
     KokaConfig.lsp.on_attach = function() end
   end
 end
 
 if KokaConfig.inlay then
   if type(KokaConfig.inlay.enabled) ~= 'boolean' then
-    vim.notify('koka.nvim: config.inlay.enabled must be boolean', vim.log.levels.WARN)
+    koka_ui.notify('config.inlay.enabled must be boolean', vim.log.levels.WARN)
     KokaConfig.inlay.enabled = false
   end
   if type(KokaConfig.inlay.debounce_ms) ~= 'number' or KokaConfig.inlay.debounce_ms < 0 then
-    vim.notify('koka.nvim: config.inlay.debounce_ms must be a non-negative number', vim.log.levels.WARN)
+    koka_ui.notify('config.inlay.debounce_ms must be a non-negative number', vim.log.levels.WARN)
     KokaConfig.inlay.debounce_ms = 300
   end
   if type(KokaConfig.inlay.max_results) ~= 'number' or KokaConfig.inlay.max_results < 1 then
-    vim.notify('koka.nvim: config.inlay.max_results must be a positive number', vim.log.levels.WARN)
+    koka_ui.notify('config.inlay.max_results must be a positive number', vim.log.levels.WARN)
     KokaConfig.inlay.max_results = 32
   end
 end

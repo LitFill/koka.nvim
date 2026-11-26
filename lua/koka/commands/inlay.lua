@@ -103,9 +103,9 @@ function M.refresh(bufnr, manual)
     local pending = #to_eval
     if manual then
       if pending == 0 then
-        vim.notify('koka.nvim: inlay hints up to date', vim.log.levels.INFO)
+        koka_ui.notify('inlay hints up to date', vim.log.levels.INFO)
       else
-        vim.notify(string.format('koka.nvim: evaluating %d call(s)...', pending), vim.log.levels.INFO)
+        koka_ui.notify(string.format('evaluating %d call(s)...', pending), vim.log.levels.INFO)
       end
     end
     if pending == 0 then

@@ -5,6 +5,7 @@
 
 local M = {}
 local koka_cmd = require('koka.koka_cmd')
+local koka_ui = require('koka.ui')
 
 ---@class koka.commands.Subcommand
 ---
@@ -70,9 +71,9 @@ function M.build_file(file_path)
       term = true,
       on_exit = function(_, exit_code)
         if exit_code == 0 then
-          vim.notify('✓ Build completed successfully', vim.log.levels.INFO)
+          koka_ui.notify('✓ Build completed successfully', vim.log.levels.INFO)
         else
-          vim.notify(string.format('✗ Build failed with exit code %d', exit_code), vim.log.levels.ERROR)
+          koka_ui.notify(string.format('✗ Build failed with exit code %d', exit_code), vim.log.levels.ERROR)
         end
       end,
     })
@@ -174,7 +175,7 @@ end
 ---@param name string?
 function M.goto_file(name)
   if not name or name == '' then
-    vim.notify('[koka.nvim] goto: missing file name', vim.log.levels.ERROR)
+    koka_ui.notify('goto: missing file name', vim.log.levels.ERROR)
     return
   end
 
@@ -194,7 +195,7 @@ function M.goto_file(name)
     if vim.uv.fs_stat(target) then
       vim.cmd.edit(vim.fn.fnameescape(target))
     else
-      vim.notify(string.format('[koka.nvim] goto: file not found: %s', target), vim.log.levels.ERROR)
+      koka_ui.notify(string.format('goto: file not found: %s', target), vim.log.levels.ERROR)
     end
     return
   end
@@ -217,15 +218,12 @@ function M.goto_file(name)
   })
 
   if #matches == 0 then
-    vim.notify(string.format('[koka.nvim] goto: no Koka file matches: %s', name), vim.log.levels.ERROR)
+    koka_ui.notify(string.format('goto: no Koka file matches: %s', name), vim.log.levels.ERROR)
     return
   end
 
   if #matches > 1 then
-    vim.notify(
-      string.format('[koka.nvim] goto: %d files match %s, opening the first', #matches, base),
-      vim.log.levels.WARN
-    )
+    koka_ui.notify(string.format('goto: %d files match %s, opening the first', #matches, base), vim.log.levels.WARN)
   end
 
   vim.cmd.edit(vim.fn.fnameescape(matches[1]))
@@ -274,7 +272,7 @@ local command_tbl = {
       vim.lsp.codelens.enable(true, { bufnr = bufnr })
       -- Also refresh our custom code lenses
       require('koka.commands.codelens').display_custom_codelenses(bufnr)
-      vim.notify('Code lenses refreshed', vim.log.levels.INFO)
+      koka_ui.notify('Code lenses refreshed', vim.log.levels.INFO)
     end,
   },
   test = {
@@ -289,14 +287,14 @@ local command_tbl = {
         end
       end
       if #tests == 0 then
-        vim.notify('No test functions found in buffer', vim.log.levels.WARN)
+        koka_ui.notify('No test functions found in buffer', vim.log.levels.WARN)
         return
       end
       local target = #args > 0 and args[1] or tests[1]
       local file_path = vim.api.nvim_buf_get_name(bufnr)
       local codelens = require('koka.commands.codelens')
       codelens.handle_run_command('test', file_path, target)
-      vim.notify(string.format('Running test: %s (%d tests found)', target, #tests), vim.log.levels.INFO)
+      koka_ui.notify(string.format('Running test: %s (%d tests found)', target, #tests), vim.log.levels.INFO)
     end,
     complete = function(lead)
       local bufnr = vim.api.nvim_get_current_buf()
@@ -352,7 +350,7 @@ local function register_subcommand_tbl(name, subcmd_tbl)
       else
         local available = vim.tbl_keys(subcmd_tbl)
         table.sort(available)
-        vim.notify(
+        koka_ui.notify(
           ([[
 Koka %s: expected a subcommand.
 Available subcommands: %s
@@ -406,8 +404,8 @@ local function koka_command_imp(opts)
   if not command then
     local available = vim.tbl_keys(command_tbl)
     table.sort(available)
-    vim.notify(
-      string.format('[koka.nvim] Unknown command: %s. Available: %s', cmd, table.concat(available, ', ')),
+    koka_ui.notify(
+      string.format('Unknown command: %s. Available: %s', cmd, table.concat(available, ', ')),
       vim.log.levels.ERROR
     )
     return

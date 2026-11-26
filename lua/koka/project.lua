@@ -3,6 +3,7 @@
 ---Project detection and configuration management for Koka
 ---@brief ]]
 local lsp_helpers = require('koka.lsp.helpers')
+local koka_ui = require('koka.ui')
 
 local project = {}
 
@@ -28,7 +29,7 @@ local function validate_config(config)
     cs = true,
   }
   if not valid_targets[config.target] then
-    vim.notify(
+    koka_ui.notify(
       string.format(
         'Koka project config: invalid target %s. Supported: c, c32, c64, c64c, js, jsnode, jsweb, wasm, wasm32, wasm64, wasmjs, wasmweb, cs. Falling back to c',
         config.target
@@ -107,10 +108,7 @@ local function get_project_config(path, callback)
         project_config = config
         break
       else
-        vim.notify(
-          string.format('[koka.nvim] Error parsing config file %s: %s', config_path, config),
-          vim.log.levels.ERROR
-        )
+        koka_ui.notify(string.format('Error parsing config file %s: %s', config_path, config), vim.log.levels.ERROR)
       end
     end
   end
@@ -256,7 +254,7 @@ function project.get_resolved_config(file_name, callback)
     -- Validate the resolved config
     local valid, err = validate_config(resolved)
     if not valid then
-      vim.notify('Koka project config validation error: ' .. tostring(err), vim.log.levels.WARN)
+      koka_ui.notify('Koka project config validation error: ' .. tostring(err), vim.log.levels.WARN)
     end
     return resolved
   end

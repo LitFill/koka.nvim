@@ -1,5 +1,6 @@
 ---@type koka.Config
 local KokaConfig = require('koka.config.internal')
+local koka_ui = require('koka.ui')
 
 ---@class koka.internal.Api
 local M = {}
@@ -11,7 +12,7 @@ local function start_or_attach()
     if ok then
       lsp.start()
     else
-      vim.notify('Koka LSP failed to load: ' .. tostring(lsp), vim.log.levels.ERROR)
+      koka_ui.notify('Koka LSP failed to load: ' .. tostring(lsp), vim.log.levels.ERROR)
     end
   end
 end

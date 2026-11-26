@@ -7,6 +7,8 @@ local config = require('koka.config.internal')
 local project = require('koka.project')
 local lsp_helpers = require('koka.lsp.helpers')
 
+local koka_ui = require('koka.ui')
+
 local M = {}
 
 ---@class koka.lsp.StartConfig: koka.lsp.ClientConfig
@@ -63,9 +65,9 @@ M.start = function(bufnr)
     -- Start new LSP client
     local client_id = vim.lsp.start(lsp_start_config, { bufnr = bufnr })
     if not client_id then
-      vim.notify(
+      koka_ui.notify(
         [[
-[koka.nvim] Failed to start Koka LSP server.
+Failed to start Koka LSP server.
         ]],
         vim.log.levels.ERROR
       )
