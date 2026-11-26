@@ -257,6 +257,65 @@ function M.show_config()
   end)
 end
 
+---Render a config value for display.
+---@param value any
+---@return string
+local function render_value(value)
+  if type(value) == 'function' then
+    return '<function>'
+  end
+  return tostring(value)
+end
+
+---Set a plugin configuration value at runtime by dotted key.
+---@param key string e.g. "inlay.enabled"
+---@param raw string The raw value from the command line
+function M.set_config(key, raw)
+  local plugin = require('koka.config.internal')
+  local defaults = plugin.get_defaults()
+
+  local parts = vim.split(key, '.', { plain = true })
+  local def = defaults
+  for _, part in ipairs(parts) do
+    def = def[part]
+    if def == nil then
+      koka_ui.notify(string.format('set: unknown setting: %s', key), vim.log.levels.ERROR)
+      return
+    end
+  end
+
+  local value
+  local kind = type(def)
+  if kind == 'boolean' then
+    if raw == 'true' then
+      value = true
+    elseif raw == 'false' then
+      value = false
+    else
+      koka_ui.notify('set: expected true or false', vim.log.levels.ERROR)
+      return
+    end
+  elseif kind == 'number' then
+    value = tonumber(raw)
+    if not value then
+      koka_ui.notify('set: expected a number', vim.log.levels.ERROR)
+      return
+    end
+  elseif kind == 'function' then
+    koka_ui.notify(string.format('set: %s is not settable from the command', key), vim.log.levels.WARN)
+    return
+  else
+    value = raw
+  end
+
+  local parent = plugin
+  for i = 1, #parts - 1 do
+    parent = parent[parts[i]]
+  end
+  parent[parts[#parts]] = value
+
+  koka_ui.notify(string.format('set %s = %s', key, render_value(value)), vim.log.levels.INFO)
+end
 ---Show available subcommands in a float
 function M.show_help()
   local lines = {
@@ -266,6 +325,7 @@ function M.show_help()
     '  :Koka build [file]     Build current file or named file',
     '  :Koka test [name]      Run test function',
     '  :Koka config           Show project configuration',
+    '  :Koka set <key> <val>  Set a plugin setting at runtime',
     '  :Koka refresh_codelens Refresh code lenses',
     '  :Koka inlay [invalidate] Toggle hints or clear the cache',
     '  :Koka goto <file>      Open a .kk file by name',
@@ -427,6 +487,27 @@ local command_tbl = {
   config = {
     impl = function()
       M.show_config()
+    end,
+  },
+  set = {
+    impl = function(args)
+      if not args[1] or not args[2] then
+        koka_ui.notify('Usage: :Koka set <key> <value>', vim.log.levels.WARN)
+        return
+      end
+      M.set_config(args[1], args[2])
+    end,
+    complete = function(lead)
+      local keys = {
+        'lsp.auto_attach',
+        'inlay.enabled',
+        'inlay.debounce_ms',
+        'inlay.max_results',
+        'inlay.on_write',
+      }
+      return vim.tbl_filter(function(k)
+        return vim.startswith(k, lead)
+      end, keys)
     end,
   },
   refresh_codelens = {
