@@ -133,8 +133,7 @@ end
 ---@return boolean is_running true if LSP client is running
 M.get_status = function(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
-  local clients = lsp_helpers.get_active_lsp_clients(bufnr)
-  return #clients > 0
+  return lsp_helpers.has_client(bufnr)
 end
 
 return M

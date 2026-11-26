@@ -7,6 +7,7 @@ local config = require('koka.config.internal')
 local treesitter = require('koka.treesitter')
 local debugger = require('koka.debugger')
 local project = require('koka.project')
+local koka_ui = require('koka.ui')
 
 local M = {}
 
@@ -38,13 +39,7 @@ end
 ---@param call table A call from find_total_calls
 ---@param text string The evaluated result
 function M.render_one(bufnr, call, text)
-  if not vim.api.nvim_buf_is_valid(bufnr) then
-    return
-  end
-  pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, call.line, call.col, {
-    virt_text = { { ' = ' .. text, 'KokaInlayHint' } },
-    virt_text_pos = 'eol',
-  })
+  koka_ui.virt_text(bufnr, ns, call.line, call.col, ' = ' .. text, 'KokaInlayHint')
 end
 
 ---Draw one hint that shows the effect row. No run.
@@ -52,13 +47,7 @@ end
 ---@param call table A call from find_total_calls
 ---@param effect string The effect row
 function M.render_effect(bufnr, call, effect)
-  if not vim.api.nvim_buf_is_valid(bufnr) then
-    return
-  end
-  pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, call.line, call.col, {
-    virt_text = { { ' : ' .. effect, 'KokaInlayHint' } },
-    virt_text_pos = 'eol',
-  })
+  koka_ui.virt_text(bufnr, ns, call.line, call.col, ' : ' .. effect, 'KokaInlayHint')
 end
 
 ---Find static calls and show a hint for each result.

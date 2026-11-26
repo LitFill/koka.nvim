@@ -5,6 +5,8 @@
 
 local M = {}
 local koka_cmd = require('koka.koka_cmd')
+local koka_ui = require('koka.ui')
+local ns_id = vim.api.nvim_create_namespace('koka_codelens')
 
 ---Find runnable functions in buffer using TreeSitter
 ---@param bufnr number
@@ -145,10 +147,8 @@ function M.setup()
     pattern = '*.kk',
     callback = function(args)
       local bufnr = args.buf
-      local clients = lsp_helpers.get_active_lsp_clients(bufnr)
-      if #clients > 0 then
+      if lsp_helpers.has_client(bufnr) then
         -- Clear fallback virtual text lenses when LSP is active
-        local ns_id = vim.api.nvim_create_namespace('koka_codelens')
         vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
         vim.lsp.codelens.enable(true, { bufnr = bufnr })
       else
@@ -162,17 +162,12 @@ end
 ---Display custom code lenses using virtual text (fallback when no LSP)
 ---@param bufnr number
 function M.display_custom_codelenses(bufnr)
-  local ns_id = vim.api.nvim_create_namespace('koka_codelens')
   vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
 
   local runnables = find_runnables(bufnr)
   for _, runnable in ipairs(runnables) do
     local text = string.format('▶ %s', runnable.name)
-    vim.api.nvim_buf_set_extmark(bufnr, ns_id, runnable.line, runnable.col, {
-      virt_text = { { text, 'Comment' } },
-      virt_text_pos = 'eol',
-      hl_mode = 'combine',
-    })
+    koka_ui.virt_text(bufnr, ns_id, runnable.line, runnable.col, text, 'Comment')
   end
 end
 

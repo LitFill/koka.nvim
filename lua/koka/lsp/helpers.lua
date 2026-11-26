@@ -23,6 +23,13 @@ M.get_active_lsp_clients = function(bufnr, filter)
   return vim.lsp.get_clients(client_filter)
 end
 
+---Check if a Koka LSP client is active for a buffer.
+---@param bufnr? number
+---@return boolean
+M.has_client = function(bufnr)
+  return #M.get_active_lsp_clients(bufnr) > 0
+end
+
 --- Get Koka LSP command
 ---
 ---@param project_config koka.project.Config
