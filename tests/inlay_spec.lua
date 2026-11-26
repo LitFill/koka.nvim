@@ -247,15 +247,18 @@ describe('koka.debugger _parse_sigs', function()
       'sig/main : () -> console/console ()',
       'sig/maybe: (x : int) -> exn int',
       'sig/show : (s : string) -> pure string',
+      'sig/multi: () -> <console/console,exn> int',
     }
     local total, effects = debugger._parse_sigs(out)
     assert.is_true(total.add)
     assert.is_nil(total.main)
     assert.is_nil(total.maybe)
     assert.is_nil(total.show)
-    assert.equal('console/console', effects.main)
-    assert.equal('exn', effects.maybe)
-    assert.equal('pure', effects.show)
+    assert.is_nil(total.multi)
+    assert.equal('console/console ()', effects.main)
+    assert.equal('exn int', effects.maybe)
+    assert.equal('pure string', effects.show)
+    assert.equal('<console/console,exn> int', effects.multi)
     assert.is_nil(effects.add)
   end)
 end)

@@ -352,8 +352,9 @@ function M._parse_sigs(out)
     local rest = line:match('%-%>%s*(.*)$')
     if name and rest then
       local first = rest:match('^(%S+)')
-      if first and (first:find('/') or effect_words[first]) then
-        effects[name] = first
+      local is_effect = rest:sub(1, 1) == '<' or (first and (first:find('/') or effect_words[first]))
+      if is_effect then
+        effects[name] = rest
       elseif first then
         total[name] = true
       end
