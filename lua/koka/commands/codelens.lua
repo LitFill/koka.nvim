@@ -7,15 +7,8 @@ local M = {}
 local koka_cmd = require('koka.koka_cmd')
 local koka_ui = require('koka.ui')
 local koka_run = require('koka.run')
+local treesitter = require('koka.treesitter')
 local ns_id = vim.api.nvim_create_namespace('koka_codelens')
-
----Find runnable functions in buffer using TreeSitter
----@param bufnr number
----@return table[] runnables Array of {line, col, name, type}
-local function find_runnables(bufnr)
-  local treesitter = require('koka.treesitter')
-  return treesitter.find_runnables(bufnr)
-end
 
 ---Build the lens label for a runnable.
 ---@param runnable table
@@ -58,7 +51,7 @@ end
 ---@param bufnr number
 ---@return table[] codelenses
 function M.get_codelenses(bufnr)
-  local runnables = find_runnables(bufnr)
+  local runnables = treesitter.find_runnables(bufnr)
   local codelenses = {}
 
   for _, runnable in ipairs(runnables) do
@@ -160,7 +153,7 @@ end
 function M.display_custom_codelenses(bufnr)
   vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
 
-  local runnables = find_runnables(bufnr)
+  local runnables = treesitter.find_runnables(bufnr)
   for _, runnable in ipairs(runnables) do
     local text = lens_text(runnable)
     koka_ui.virt_text(bufnr, ns_id, runnable.line, runnable.col, text, 'Comment')
@@ -173,7 +166,7 @@ function M.run_at_cursor()
   local cursor = vim.api.nvim_win_get_cursor(0)
   local line_nr = cursor[1] - 1 -- Convert to 0-indexed
 
-  local runnables = find_runnables(bufnr)
+  local runnables = treesitter.find_runnables(bufnr)
   for _, runnable in ipairs(runnables) do
     if runnable.line == line_nr then
       local bufname = vim.api.nvim_buf_get_name(bufnr)
