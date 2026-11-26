@@ -62,6 +62,18 @@ end
 ---@param callback? fun(project_dir: string?, project_config: koka.project.Config?) If `nil`, this function runs synchronously
 ---@return string? project_dir (if `callback ~= nil` and successful)
 ---@return koka.project.Config? project_config (if `callback ~= nil` and successful)
+---Run sync_fn. Return its value when callback is nil. Else call callback with it.
+---@param callback? fun(value: any)
+---@param sync_fn fun(): any
+---@return any
+local function maybe_async(callback, sync_fn)
+  if callback then
+    callback(sync_fn())
+  else
+    return sync_fn()
+  end
+end
+
 local function get_project_config(path, callback)
   -- First find the project directory by looking for koka.json, .koka.json, or package.kk
   local project_dir = vim.fs.dirname(vim.fs.find({ 'koka.json', '.koka.json', 'package.kk' }, {
@@ -115,34 +127,27 @@ end
 ---@param callback? fun(root_dir: string | nil) If `nil`, this function runs synchronously
 ---@return string | nil root_dir (if `callback ~= nil` and successful)
 local function default_get_root_dir(file_name, callback)
-  local stat = vim.uv.fs_stat(file_name)
-  if not stat then
-    return callback and callback(nil) or nil
-  end
-  local path = stat.type == 'file' and vim.fs.dirname(file_name) or file_name
-  if not path or not vim.uv.fs_stat(path) then
-    return callback and callback(nil) or nil
-  end
-
-  ---@param project_dir? string
-  ---@param project_config? koka.project.Config
-  ---@return string | nil root_dir
   local function root_dir(project_dir, project_config)
     -- If project_config has explicit cwd, use that
     if project_config and project_config.cwd then
       return project_config.cwd
     end
-    -- Otherwise use the project directory (where koka.json or package.kk was found)
+    -- Otherwise use the project directory
     return project_dir
   end
-  if callback then
-    get_project_config(path, function(project_dir, project_config)
-      callback(root_dir(project_dir, project_config))
-    end)
-  else
+
+  return maybe_async(callback, function()
+    local stat = vim.uv.fs_stat(file_name)
+    if not stat then
+      return nil
+    end
+    local path = stat.type == 'file' and vim.fs.dirname(file_name) or file_name
+    if not path or not vim.uv.fs_stat(path) then
+      return nil
+    end
     local project_dir, project_config = get_project_config(path)
     return root_dir(project_dir, project_config)
-  end
+  end)
 end
 
 ---Checks if there is an active Koka LSP client for file_name and returns its root directory if found.
@@ -194,14 +199,10 @@ function project.get_project_config(file_name, callback)
   file_name = file_name or vim.api.nvim_buf_get_name(0)
   local current_dir = vim.fs.dirname(file_name)
 
-  if callback then
-    get_project_config(current_dir, function(_, project_config)
-      callback(project_config)
-    end)
-  else
+  return maybe_async(callback, function()
     local _, project_config = get_project_config(current_dir)
     return project_config
-  end
+  end)
 end
 
 ---Get resolved project configuration with defaults applied
