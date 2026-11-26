@@ -532,6 +532,115 @@ function M.write_signature()
     end)
   end)
 end
+
+---Replace a function with a type-annotated stub that throws.
+---The stub uses an open effect row so `throw` typechecks for any result type.
+---@param bufnr number
+---@param func table {name=string, row=number, erow=number}
+---@param params table Array of {name=string?, type=string?}
+---@param ret string?
+function M.apply_stub(bufnr, func, params, ret)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local first = lines[func.row + 1] or ''
+
+  -- Source parameter names, in order, as a fallback when counts differ.
+  local src_names = {}
+  local open = first:find('%(', 1, true)
+  if open then
+    local depth, close = 0, nil
+    for i = open, #first do
+      local c = first:sub(i, i)
+      if c == '(' then
+        depth = depth + 1
+      elseif c == ')' then
+        depth = depth - 1
+        if depth == 0 then
+          close = i
+          break
+        end
+      end
+    end
+    if close then
+      local inner = first:sub(open + 1, close - 1)
+      if inner:match('%S') then
+        for _, seg in ipairs(split_top_commas(inner)) do
+          local nm = seg:match('^%s*[%?]?([A-Za-z_][A-Za-z0-9_]*)')
+          src_names[#src_names + 1] = nm
+        end
+      end
+    end
+  end
+
+  local parts = {}
+  for i, p in ipairs(params) do
+    local nm = p.name or src_names[i]
+    if nm and p.type then
+      parts[#parts + 1] = string.format('%s : %s', nm, p.type)
+    elseif nm then
+      parts[#parts + 1] = nm
+    end
+  end
+  if #parts == 0 and #src_names > 0 then
+    for _, nm in ipairs(src_names) do
+      parts[#parts + 1] = nm
+    end
+  end
+
+  local params_str = table.concat(parts, ', ')
+  local ret_ann = ret or '()'
+  local sig = string.format('fun %s(%s) : _ %s', func.name, params_str, ret_ann)
+  local body = string.format('  throw("not implemented: %s")', func.name)
+
+  vim.api.nvim_buf_set_text(bufnr, func.row, 0, func.erow, -1, { sig, body })
+  koka_ui.notify(string.format('stub: %s stubbed (open effect row, throws)', func.name), vim.log.levels.INFO)
+end
+
+---Infer and write a throwing stub for the function under the cursor.
+function M.stub_function()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local treesitter = require('koka.treesitter')
+  local line = vim.api.nvim_win_get_cursor(0)[1] - 1
+  local func = treesitter.find_function_at(bufnr, line)
+  if not func then
+    koka_ui.notify('stub: no function at cursor', vim.log.levels.WARN)
+    return
+  end
+  local file_path = vim.api.nvim_buf_get_name(bufnr)
+  local project = require('koka.project')
+  project.get_resolved_config(file_path, function(config)
+    local cmd = koka_cmd.build(config, { mode = '-c', file = file_path, showtypesigs = true })
+    local cwd = config.cwd or vim.fs.dirname(file_path)
+    vim.system(cmd, { cwd = cwd, text = true }, function(res)
+      vim.schedule(function()
+        local out = table.concat({ res.stdout or '', res.stderr or '' }, '\n')
+        local inferred
+        for _, l in ipairs(vim.split(out, '\n')) do
+          local name, ty = parse_sig_line(l)
+          if name == func.name then
+            inferred = ty
+            break
+          end
+        end
+        if not inferred then
+          koka_ui.notify(
+            string.format('stub: no inferred type for %s (file may not typecheck)', func.name),
+            vim.log.levels.WARN
+          )
+          return
+        end
+        local params, ret = parse_type(inferred)
+        if not params then
+          koka_ui.notify(string.format('stub: could not parse type: %s', inferred), vim.log.levels.WARN)
+          return
+        end
+        M.apply_stub(bufnr, func, params, ret)
+      end)
+    end)
+  end)
+end
 ---Show available subcommands in a float
 function M.show_help()
   local lines = {
@@ -543,6 +652,7 @@ function M.show_help()
     '  :Koka config           Show project configuration',
     '  :Koka set <key> <val>  Set a plugin setting at runtime',
     '  :Koka sig              Write the inferred return type at the cursor',
+    '  :Koka stub             Replace the function with a throwing stub',
     '  :Koka refresh_codelens Refresh code lenses',
     '  :Koka inlay [invalidate] Toggle hints or clear the cache',
     '  :Koka goto <file>      Open a .kk file by name',
@@ -730,6 +840,11 @@ local command_tbl = {
   sig = {
     impl = function()
       M.write_signature()
+    end,
+  },
+  stub = {
+    impl = function()
+      M.stub_function()
     end,
   },
   refresh_codelens = {

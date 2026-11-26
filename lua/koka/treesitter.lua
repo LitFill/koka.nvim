@@ -652,7 +652,11 @@ function M.find_function_at(bufnr, line)
         local srow, _, erow = parent:range()
         if line >= srow and line <= erow then
           if not best or srow > best.row then
-            best = { name = vim.treesitter.get_node_text(node, bufnr), row = srow }
+            best = {
+              name = vim.treesitter.get_node_text(node, bufnr),
+              row = srow,
+              erow = erow,
+            }
           end
         end
       end
