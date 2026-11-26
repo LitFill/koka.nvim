@@ -164,19 +164,6 @@ function M._module_name(lines, program_path)
   return (base:gsub('%.kk$', ''))
 end
 
----Build the wrapper source: the buffer text plus an entry that prints the call.
----@param lines string[] The buffer lines
----@param func_name string Name of the total function
----@param args_text string Comma-separated literal arguments
----@return string[] wrapper_lines
-function M._build_wrapper(lines, func_name, args_text)
-  local wrapper = {}
-  vim.list_extend(wrapper, lines)
-  wrapper[#wrapper + 1] = ''
-  wrapper[#wrapper + 1] = string.format('fun kokaInlayEntry() { println(%s(%s)) }', func_name, args_text)
-  return wrapper
-end
-
 ---Evaluate a total function with literal arguments and capture stdout.
 ---Writes a temp module that prints the call, runs koka -e, and returns text.
 ---@param project_config koka.project.Config The project config
