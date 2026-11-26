@@ -200,6 +200,45 @@ function M.show_config()
     table.insert(lines, string.format('Inlay Hints: %s', inlay.is_enabled() and 'enabled' or 'disabled'))
     table.insert(lines, string.format('LSP: %s', lsp.get_status() and 'running' or 'stopped'))
 
+    local plugin = require('koka.config.internal')
+    local defaults = plugin.get_defaults()
+    local function render(value)
+      if type(value) == 'function' then
+        return '<function>'
+      end
+      return tostring(value)
+    end
+    table.insert(lines, '')
+    table.insert(lines, 'Plugin Settings (default -> active):')
+    table.insert(
+      lines,
+      string.format('  lsp.auto_attach: %s -> %s', render(defaults.lsp.auto_attach), render(plugin.lsp.auto_attach))
+    )
+    table.insert(
+      lines,
+      string.format('  inlay.enabled: %s -> %s', render(defaults.inlay.enabled), render(plugin.inlay.enabled))
+    )
+    table.insert(
+      lines,
+      string.format(
+        '  inlay.debounce_ms: %s -> %s',
+        render(defaults.inlay.debounce_ms),
+        render(plugin.inlay.debounce_ms)
+      )
+    )
+    table.insert(
+      lines,
+      string.format(
+        '  inlay.max_results: %s -> %s',
+        render(defaults.inlay.max_results),
+        render(plugin.inlay.max_results)
+      )
+    )
+    table.insert(
+      lines,
+      string.format('  inlay.on_write: %s -> %s', render(defaults.inlay.on_write), render(plugin.inlay.on_write))
+    )
+
     if config.include_dirs and #config.include_dirs > 0 then
       table.insert(lines, 'Include Directories:')
       for _, dir in ipairs(config.include_dirs) do

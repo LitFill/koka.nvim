@@ -65,4 +65,10 @@ if KokaConfig.inlay then
   end
 end
 
+---Return a copy of the default plugin configuration.
+---@return koka.Config
+KokaConfig.get_defaults = function()
+  return vim.deepcopy(KokaDefaultConfig)
+end
+
 return KokaConfig
