@@ -248,7 +248,7 @@ function M.eval_total(project_config, program_path, lines, func_name, args_text,
       pcall(vim.fn.jobstop, job)
     end
     vim.fn.delete(tmp_dir, 'rf')
-    callback(result, error_text)
+    pcall(callback, result, error_text)
   end
 
   job = vim.fn.jobstart(cmd, {
@@ -415,7 +415,7 @@ function M.eval_calls(project_config, program_path, lines, calls, callback, time
       pcall(vim.fn.jobstop, job)
     end
     vim.fn.delete(tmp_dir, 'rf')
-    callback(results, total, effects, error_text)
+    pcall(callback, results, total, effects, error_text)
   end
 
   job = vim.fn.jobstart(cmd, {
