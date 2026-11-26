@@ -127,7 +127,8 @@ Create a `koka.json` or `.koka.json` file in your project root:
 | `include_dirs` | string[] | Additional include directories | `[]` |
 | `compiler_args` | string[] | Extra compiler arguments | `[]` |
 
-Supported targets: `c`, `c32`, `c64c`, `wasm`, `jsnode`
+Supported targets: `c`, `c32`, `c64`, `c64c`, `js`, `jsnode`, `jsweb`,
+`wasm`, `wasm32`, `wasm64`, `wasmjs`, `wasmweb`, `cs`.
 
 **`wasm` target**: Compiles to WebAssembly. Requires a WebAssembly runtime to execute.
 
@@ -196,30 +197,56 @@ require'lspconfig'.koka.setup{
 }
 ```
 
+### Inlay Hints
+
+Inlay hints show the result of total functions at call sites as virtual text.
+They are off by default. Enable and tune them with `vim.g.koka`:
+
+```lua
+vim.g.koka = {
+  inlay = {
+    enabled = true,    -- show inlay hints (default: false)
+    debounce_ms = 300, -- delay before a refresh (default: 300)
+    max_results = 32,  -- max hints per buffer (default: 32)
+  },
+}
+```
+
+Use `:Koka inlay` to toggle hints. Use `:Koka inlay invalidate` to clear the
+cache and re-run.
+
 ## File Structure
 
 ```text
 koka.nvim/
 ├── ftplugin/koka.lua           # Filetype plugin entry point
+├── plugin/koka.lua             # Plugin loader
 ├── lua/koka/
 │   ├── init.lua                # Empty module (filetype-based architecture)
 │   ├── internal.lua            # Main plugin initialization
+│   ├── koka_cmd.lua            # One koka argv builder
+│   ├── run.lua                 # Run a command in a terminal tab
+│   ├── ui.lua                  # Virtual text and notify helpers
+│   ├── project.lua             # Project detection and config parsing
+│   ├── treesitter.lua          # TreeSitter detection and queries
+│   ├── debugger.lua            # Code execution via LSP and koka -e
 │   ├── commands/
-│   │   ├── init.lua           # General commands setup
-│   │   ├── codelens.lua       # Code execution and codelens
-│   │   └── treesitter.lua     # TreeSitter management
+│   │   ├── init.lua            # General commands setup
+│   │   ├── codelens.lua        # Code execution and codelens
+│   │   └── inlay.lua           # Inlay hints for total functions
 │   ├── config/
-│   │   └── internal.lua       # Configuration management
+│   │   ├── init.lua            # Public config docs
+│   │   └── internal.lua        # Configuration management
 │   ├── lsp/
-│   │   ├── init.lua           # LSP client management
-│   │   └── helpers.lua        # LSP utility functions
-│   ├── project.lua            # Project detection and config parsing
-│   └── debugger.lua           # Code execution via LSP commands
-└── queries/koka/              # TreeSitter queries
-   ├── highlights.scm
-   ├── indents.scm
-   ├── injections.scm
-   └── locals.scm
+│   │   ├── init.lua            # LSP client management
+│   │   └── helpers.lua         # LSP utility functions
+│   └── types/
+│       └── internal.lua        # Shared type helpers
+└── queries/koka/               # TreeSitter queries
+    ├── highlights.scm
+    ├── indents.scm
+    ├── injections.scm
+    └── locals.scm
 ```
 
 ## Development
