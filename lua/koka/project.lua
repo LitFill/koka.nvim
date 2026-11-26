@@ -228,40 +228,19 @@ function project.get_resolved_config(file_name, callback)
       return vim.deepcopy(default_config)
     end
   end
-  if callback then
-    get_project_config(current_dir, function(project_dir, project_config)
-      local resolved = resolve_config(project_config)
-      -- Resolve cwd if not explicitly set
-      if not resolved.cwd then
-        resolved.cwd = project_dir or current_dir
-      end
-      -- Normalize the cwd path for consistency
-      -- If cwd is relative, resolve it relative to the project directory
-      if resolved.cwd then
-        if not (resolved.cwd:match('^/') or resolved.cwd:match('^%a:')) then -- Unix absolute or Windows drive
-          local base_dir = project_dir or current_dir
-          resolved.cwd = vim.fs.joinpath(base_dir, resolved.cwd)
-        end
-        resolved.cwd = vim.fs.normalize(resolved.cwd)
-      end
-      -- Validate the resolved config
-      local valid, err = validate_config(resolved)
-      if not valid then
-        vim.notify('Koka project config validation error: ' .. tostring(err), vim.log.levels.WARN)
-      end
-      callback(resolved)
-    end)
-  else
-    local project_dir, project_config = get_project_config(current_dir)
+
+  ---@param project_dir? string
+  ---@param project_config? koka.project.Config
+  ---@return koka.project.Config
+  local function finalize(project_dir, project_config)
     local resolved = resolve_config(project_config)
     -- Resolve cwd if not explicitly set
     if not resolved.cwd then
       resolved.cwd = project_dir or current_dir
     end
-    -- Normalize the cwd path for consistency
     -- If cwd is relative, resolve it relative to the project directory
     if resolved.cwd then
-      if not (resolved.cwd:match('^/') or resolved.cwd:match('^%a:')) then -- Unix absolute or Windows drive
+      if not (resolved.cwd:match('^/') or resolved.cwd:match('^%a:')) then
         local base_dir = project_dir or current_dir
         resolved.cwd = vim.fs.joinpath(base_dir, resolved.cwd)
       end
@@ -273,6 +252,15 @@ function project.get_resolved_config(file_name, callback)
       vim.notify('Koka project config validation error: ' .. tostring(err), vim.log.levels.WARN)
     end
     return resolved
+  end
+
+  if callback then
+    get_project_config(current_dir, function(project_dir, project_config)
+      callback(finalize(project_dir, project_config))
+    end)
+  else
+    local project_dir, project_config = get_project_config(current_dir)
+    return finalize(project_dir, project_config)
   end
 end
 
