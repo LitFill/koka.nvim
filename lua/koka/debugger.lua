@@ -13,6 +13,7 @@
 local M = {}
 local koka_cmd = require('koka.koka_cmd')
 local koka_ui = require('koka.ui')
+local koka_run = require('koka.run')
 
 ---Execute a program or function using Koka LSP
 ---@param client vim.lsp.Client The LSP client
@@ -107,23 +108,12 @@ function M._run_generated_code(target, executable_path, program_args, cwd, callb
     return
   end
 
-  -- Create a new terminal tab for execution using jobstart argv (handles spaces)
-  vim.cmd('tabnew')
   local full_cmd = vim.list_extend({ cmd }, cmd_args)
-  vim.fn.jobstart(full_cmd, {
-    cwd = cwd,
-    term = true,
-    on_exit = function(_, exit_code)
-      if exit_code == 0 then
-        koka_ui.notify('✓ Execution completed successfully', vim.log.levels.INFO)
-      else
-        koka_ui.notify(string.format('✗ Execution failed with exit code %d', exit_code), vim.log.levels.ERROR)
-      end
-      if callback then
-        callback(executable_path, exit_code)
-      end
-    end,
-  })
+  koka_run.run_term(full_cmd, cwd, 'Execution', function(exit_code)
+    if callback then
+      callback(executable_path, exit_code)
+    end
+  end)
 end
 
 ---Compile and run a specific function

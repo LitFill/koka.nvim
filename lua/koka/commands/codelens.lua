@@ -6,6 +6,7 @@
 local M = {}
 local koka_cmd = require('koka.koka_cmd')
 local koka_ui = require('koka.ui')
+local koka_run = require('koka.run')
 local ns_id = vim.api.nvim_create_namespace('koka_codelens')
 
 ---Find runnable functions in buffer using TreeSitter
@@ -112,18 +113,7 @@ function M._handle_run_command_fallback(action_type, file_path, func_name)
 
     local title = string.format('Koka %s: %s', action_type, func_name)
 
-    -- Run in terminal using jobstart with argv list (handles spaces)
-    vim.fn.jobstart(cmd, {
-      cwd = cwd,
-      term = true,
-      on_exit = function(_, exit_code)
-        if exit_code == 0 then
-          vim.notify(string.format('✓ %s completed successfully', title), vim.log.levels.INFO)
-        else
-          vim.notify(string.format('✗ %s failed with exit code %d', title, exit_code), vim.log.levels.ERROR)
-        end
-      end,
-    })
+    koka_run.run_term(cmd, cwd, title)
   end)
 end
 
