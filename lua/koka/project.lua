@@ -177,15 +177,20 @@ end
 function project.get_config_root_dir(config, file_name, callback)
   local reuse_active = get_mb_active_client_root(file_name)
   if reuse_active then
-    return callback and callback(reuse_active) or reuse_active
+    return maybe_async(callback, function()
+      return reuse_active
+    end)
   end
   if type(config.root_dir) == 'function' then
-    local root_dir = config.root_dir(file_name, default_get_root_dir)
-    return callback and callback(root_dir) or root_dir
+    return maybe_async(callback, function()
+      return config.root_dir(file_name, default_get_root_dir)
+    end)
   elseif type(config.root_dir) == 'string' then
     local root_dir = config.root_dir
     ---@cast root_dir string
-    return callback and callback(root_dir) or root_dir
+    return maybe_async(callback, function()
+      return root_dir
+    end)
   else
     return default_get_root_dir(file_name, callback)
   end
