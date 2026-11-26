@@ -440,16 +440,32 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1753515156,
-        "narHash": "sha256-DvSu97D/E7DO/mXno6KWmaS4uqfs9F3kRFWAu0f1WaI=",
+        "lastModified": 1789359615,
+        "narHash": "sha256-Ial5QngLiWS7utktCveYRamygMC+FtEy0nr7OU8y+ww=",
         "owner": "syaiful6",
         "repo": "koka-overlay",
-        "rev": "589eff95f20f42e00a7355c492086df4cf6aa73e",
+        "rev": "8c1b689c28f1f3aa9b54b0f0bf01402058caf8a2",
         "type": "github"
       },
       "original": {
         "owner": "syaiful6",
         "repo": "koka-overlay",
+        "type": "github"
+      }
+    },
+    "koka-nixpkgs": {
+      "locked": {
+        "lastModified": 1793341285,
+        "narHash": "sha256-Y1CiZ4SoBUjLQyQM/pY+rS2dXD3CHLPstF0lmOc73D4=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "1c89083e451e891152365b799595cf7790a43325",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "1c89083e451e891152365b799595cf7790a43325",
         "type": "github"
       }
     },
@@ -676,6 +692,7 @@
         "gen-luarc": "gen-luarc",
         "git-hooks": "git-hooks_2",
         "koka": "koka",
+        "koka-nixpkgs": "koka-nixpkgs",
         "neorocks": "neorocks",
         "nixpkgs": "nixpkgs_6"
       }

@@ -11,6 +11,8 @@
     };
     flake-utils.url = "github:numtide/flake-utils";
     koka.url = "github:syaiful6/koka-overlay";
+    # Pinned nixpkgs that provides koka 3.2.9 (matches the other koka projects).
+    koka-nixpkgs.url = "github:NixOS/nixpkgs/1c89083e451e891152365b799595cf7790a43325";
   };
 
   outputs = {
@@ -49,8 +51,7 @@
           gen-luarc.overlays.default
         ];
       };
-      kokaVersion = "3.2.2";
-      koka = pkgs.kokapkgs.${kokaVersion};
+      koka = inputs.koka-nixpkgs.legacyPackages.${system}.koka;
       luarc-plugins = with pkgs.lua51Packages; (with pkgs.vimPlugins; [
         toggleterm-nvim
         telescope-nvim
