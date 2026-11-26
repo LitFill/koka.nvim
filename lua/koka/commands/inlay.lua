@@ -123,10 +123,10 @@ function M.refresh(bufnr, manual)
         end
       end
       if err and manual then
-        vim.notify('koka.nvim: ' .. err, vim.log.levels.ERROR)
+        koka_ui.notify(err, vim.log.levels.ERROR)
       end
       if manual then
-        vim.notify('koka.nvim: inlay hints updated', vim.log.levels.INFO)
+        koka_ui.notify('inlay hints updated', vim.log.levels.INFO)
       end
     end, 20000)
   end
@@ -143,7 +143,7 @@ function M.refresh(bufnr, manual)
     end
     if err then
       if manual then
-        vim.notify('koka.nvim: ' .. err, vim.log.levels.ERROR)
+        koka_ui.notify(err, vim.log.levels.ERROR)
       end
       return
     end
@@ -198,7 +198,7 @@ function M.toggle()
   local bufnr = vim.api.nvim_get_current_buf()
   if config.inlay.enabled then
     M.refresh(bufnr, true)
-    vim.notify('koka.nvim: inlay hints enabled', vim.log.levels.INFO)
+    koka_ui.notify('inlay hints enabled', vim.log.levels.INFO)
   else
     -- Bump the generation and stop the timer. An in-flight callback is dropped.
     local s = state[bufnr]
@@ -213,7 +213,7 @@ function M.toggle()
       end
     end
     M.clear(bufnr)
-    vim.notify('koka.nvim: inlay hints disabled', vim.log.levels.INFO)
+    koka_ui.notify('inlay hints disabled', vim.log.levels.INFO)
   end
 end
 

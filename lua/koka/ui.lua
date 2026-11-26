@@ -24,4 +24,11 @@ function M.virt_text(bufnr, ns, line, col, text, hl)
   })
 end
 
+---Show a message with one prefix.
+---@param msg string The message
+---@param level? number The vim.log level
+function M.notify(msg, level)
+  vim.notify('[koka.nvim] ' .. msg, level or vim.log.levels.INFO)
+end
+
 return M
