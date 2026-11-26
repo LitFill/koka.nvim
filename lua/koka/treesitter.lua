@@ -466,8 +466,10 @@ function M._try_ucfm(node, bufnr)
     return nil
   end
 
-  local atom = node:named_child(0)
-  if atom:type() ~= 'atom' then
+  local head = node:named_child(0)
+  local ht = head:type()
+  -- The head is an atom (literal) or a static call like add(1, 2).
+  if ht ~= 'atom' and ht ~= 'opexpr' and ht ~= 'ntlexpr' then
     return nil
   end
 
@@ -493,7 +495,17 @@ function M._try_ucfm(node, bufnr)
     end
   end
 
-  if not is_static(atom, bufnr) then
+  -- The head is static if it is a literal, or a name called with arguments
+  -- (a call head like add(1, 2)). The arguments are checked static above.
+  local head_ok = is_static(head, bufnr)
+  if not head_ok and head:type() == 'atom' then
+    local nn = head:named_child(0)
+    local nxt = node:named_child(1)
+    if nn and nn:type() == 'name' and nxt and nxt:type() == 'arguments' then
+      head_ok = true
+    end
+  end
+  if not head_ok then
     return nil
   end
 

@@ -215,6 +215,27 @@ describe('koka.treesitter inlay helpers', function()
       end
       assert.is_true(found)
     end)
+
+    it('finds a UCFM dot chain with a call head', function()
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      local lines = {
+        'fun add(a: int, b: int): int { a + b }',
+        'fun main() {',
+        '  add(33, 34).repeat("why ")',
+        '}',
+      }
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+
+      local calls = treesitter.find_total_calls(bufnr)
+
+      local found = false
+      for _, call in ipairs(calls) do
+        if call.expr == 'add(33, 34).repeat("why ")' then
+          found = true
+        end
+      end
+      assert.is_true(found)
+    end)
   end)
 end)
 
