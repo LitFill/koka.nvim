@@ -12,6 +12,7 @@
 
 local M = {}
 local koka_cmd = require('koka.koka_cmd')
+local koka_ui = require('koka.ui')
 
 ---Execute a program or function using Koka LSP
 ---@param client vim.lsp.Client The LSP client
@@ -42,7 +43,7 @@ function M.execute(client, project_config, args, callback)
     ---@diagnostic disable-next-line: param-type-mismatch
   }, function(err, result)
     if err then
-      vim.notify('Error executing Koka command: ' .. tostring(err.message or err), vim.log.levels.ERROR)
+      koka_ui.notify('Error executing Koka command: ' .. tostring(err.message or err), vim.log.levels.ERROR)
       if callback then
         callback(nil, err)
       end
@@ -50,7 +51,7 @@ function M.execute(client, project_config, args, callback)
     end
 
     if not result then
-      vim.notify('Error generating code, see language server output for specifics', vim.log.levels.ERROR)
+      koka_ui.notify('Error generating code, see language server output for specifics', vim.log.levels.ERROR)
       if callback then
         callback(nil, 'No result from LSP')
       end
@@ -68,7 +69,7 @@ function M.execute(client, project_config, args, callback)
 
     -- Check if the generated file exists
     if vim.fn.filereadable(full_path) == 0 then
-      vim.notify('Error finding generated code at ' .. output_path, vim.log.levels.ERROR)
+      koka_ui.notify('Error finding generated code at ' .. output_path, vim.log.levels.ERROR)
       if callback then
         callback(nil, 'Generated file not found')
       end
@@ -96,7 +97,7 @@ function M._run_generated_code(target, executable_path, program_args, cwd, callb
     cmd = 'node'
     cmd_args = vim.list_extend({ executable_path }, program_args)
   else
-    vim.notify(
+    koka_ui.notify(
       string.format('Running code for target %s is not yet supported. Output is at %s', target, executable_path),
       vim.log.levels.WARN
     )
@@ -114,9 +115,9 @@ function M._run_generated_code(target, executable_path, program_args, cwd, callb
     term = true,
     on_exit = function(_, exit_code)
       if exit_code == 0 then
-        vim.notify('✓ Execution completed successfully', vim.log.levels.INFO)
+        koka_ui.notify('✓ Execution completed successfully', vim.log.levels.INFO)
       else
-        vim.notify(string.format('✗ Execution failed with exit code %d', exit_code), vim.log.levels.ERROR)
+        koka_ui.notify(string.format('✗ Execution failed with exit code %d', exit_code), vim.log.levels.ERROR)
       end
       if callback then
         callback(executable_path, exit_code)
