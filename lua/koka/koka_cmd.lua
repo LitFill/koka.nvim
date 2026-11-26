@@ -5,6 +5,25 @@
 
 local M = {}
 
+---Koka effect names. Keep this set in sync with the Koka stdlib.
+---The stdlib can add effects. Update this list when it does.
+M.effect_words = {
+  pure = true,
+  exn = true,
+  div = true,
+  console = true,
+  ndet = true,
+  fsys = true,
+  st = true,
+  io = true,
+  random = true,
+  read = true,
+  write = true,
+  state = true,
+  global = true,
+  async = true,
+}
+
 ---Build the common flags. No mode and no file.
 ---The flags are buildtag, target, include, compiler args, showtypesigs.
 ---@param config koka.project.Config The project config

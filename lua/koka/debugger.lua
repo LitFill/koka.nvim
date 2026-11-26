@@ -225,23 +225,6 @@ function M._build_wrapper_calls(lines, calls)
   return wrapper
 end
 
-local effect_words = {
-  pure = true,
-  exn = true,
-  div = true,
-  console = true,
-  ndet = true,
-  fsys = true,
-  st = true,
-  io = true,
-  random = true,
-  read = true,
-  write = true,
-  state = true,
-  global = true,
-  async = true,
-}
-
 ---Parse --showtypesigs output. Return the set of total definition names.
 ---@param out string[] The stdout lines
 ---@return table<string,boolean>
@@ -257,7 +240,7 @@ function M._parse_sigs(out)
     local rest = line:match('%-%>%s*(.*)$')
     if name and rest then
       local first = rest:match('^(%S+)')
-      local is_effect = rest:sub(1, 1) == '<' or (first and (first:find('/') or effect_words[first]))
+      local is_effect = rest:sub(1, 1) == '<' or (first and (first:find('/') or koka_cmd.effect_words[first]))
       if is_effect then
         effects[name] = rest
       elseif first then
