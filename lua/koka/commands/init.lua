@@ -338,10 +338,35 @@ local function strip_forall(t)
   return rest or t
 end
 
----Return the result type from a full function type string, or nil.
+---Split a string by commas that are not nested in brackets or angle brackets.
+---@param s string
+---@return string[] parts
+local function split_top_commas(s)
+  local parts = {}
+  local depth = 0
+  local last = 1
+  for i = 1, #s do
+    local c = s:sub(i, i)
+    if c == '(' or c == '<' or c == '[' then
+      depth = depth + 1
+    elseif c == ')' or c == '>' or c == ']' then
+      depth = depth - 1
+    elseif c == ',' and depth == 0 then
+      parts[#parts + 1] = s:sub(last, i - 1)
+      last = i + 1
+    end
+  end
+  parts[#parts + 1] = s:sub(last)
+  return parts
+end
+
+---Parse a full function type into parameter types and a result type.
+---Strips a leading forall<...>. The first value is nil when the shape is not
+---a function type.
 ---@param t string
+---@return table? params Array of {name=string?, type=string?}
 ---@return string? ret
-local function result_type(t)
+local function parse_type(t)
   local s = strip_forall(t):match('^%s*(.*)$')
   if s:sub(1, 1) ~= '(' then
     return nil
@@ -362,18 +387,35 @@ local function result_type(t)
   if not close then
     return nil
   end
+
+  local params = {}
+  local inner = s:sub(2, close - 1)
+  if inner:match('%S') then
+    for _, raw in ipairs(split_top_commas(inner)) do
+      local seg = raw:match('^%s*(.-)%s*$')
+      local name, ty = seg:match('^[%?]?([A-Za-z_][A-Za-z0-9_]*)%s*:%s*(.+)$')
+      if name and ty then
+        params[#params + 1] = { name = name, type = ty }
+      else
+        params[#params + 1] = { name = nil, type = nil }
+      end
+    end
+  end
+
   local rest = s:sub(close + 1):match('^%s*->%s*(.*)$')
   if not rest or rest == '' then
-    return nil
+    return params, nil
   end
-  return rest
+  return params, rest
 end
 
----Insert a return type annotation after the parameter list of a function.
+---Insert inferred parameter and return types into a function signature.
+---Only the single-line parameter list case is handled.
 ---@param bufnr number
 ---@param func table {name=string, row=number}
----@param ret string
-function M.apply_return_type(bufnr, func, ret)
+---@param params table Array of {name=string?, type=string?}
+---@param ret string?
+function M.apply_signature(bufnr, func, params, ret)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
@@ -405,17 +447,49 @@ function M.apply_return_type(bufnr, func, ret)
     koka_ui.notify('sig: parameter list is not closed on the function line', vim.log.levels.WARN)
     return
   end
+
+  -- Collect insertions as {col, text}; apply right to left.
+  local inserts = {}
+
   local brace = text:find('{', close, true)
   local between = text:sub(close + 1, brace and (brace - 1) or #text)
-  if between:find(':', 1, true) then
-    koka_ui.notify(string.format('sig: %s already has a return type', func.name), vim.log.levels.INFO)
+  if ret and not between:find(':', 1, true) then
+    inserts[#inserts + 1] = { col = close, text = ': ' .. ret }
+  end
+
+  local inner = text:sub(open + 1, close - 1)
+  local src_params = inner:match('%S') and split_top_commas(inner) or {}
+  if #params > 0 and #src_params == #params then
+    local seg_start = open + 1
+    for idx, seg in ipairs(src_params) do
+      local lead = seg:match('^%s*')
+      local name_part = seg:sub(#lead + 1):match('^[%?]?[A-Za-z_][A-Za-z0-9_]*')
+      local has_type = seg:find(':', 1, true) ~= nil
+      local is_default = seg:find('?', 1, true) ~= nil
+      local inferred = params[idx]
+      if name_part and not has_type and not is_default and inferred and inferred.type then
+        local col = seg_start + #lead + #name_part - 1
+        inserts[#inserts + 1] = { col = col, text = ': ' .. inferred.type }
+      end
+      seg_start = seg_start + #seg + 1
+    end
+  end
+
+  if #inserts == 0 then
+    koka_ui.notify(string.format('sig: %s already fully annotated', func.name), vim.log.levels.INFO)
     return
   end
-  vim.api.nvim_buf_set_text(bufnr, func.row, close, func.row, close, ': ' .. ret)
-  koka_ui.notify(string.format('sig: %s : %s', func.name, ret), vim.log.levels.INFO)
+
+  table.sort(inserts, function(a, b)
+    return a.col > b.col
+  end)
+  for _, ins in ipairs(inserts) do
+    vim.api.nvim_buf_set_text(bufnr, func.row, ins.col, func.row, ins.col, ins.text)
+  end
+  koka_ui.notify(string.format('sig: annotated %s', func.name), vim.log.levels.INFO)
 end
 
----Infer and write the return type of the function under the cursor.
+---Infer and write the signature of the function under the cursor.
 function M.write_signature()
   local bufnr = vim.api.nvim_get_current_buf()
   local treesitter = require('koka.treesitter')
@@ -448,12 +522,12 @@ function M.write_signature()
           )
           return
         end
-        local ret = result_type(inferred)
-        if not ret then
+        local params, ret = parse_type(inferred)
+        if not params then
           koka_ui.notify(string.format('sig: could not parse type: %s', inferred), vim.log.levels.WARN)
           return
         end
-        M.apply_return_type(bufnr, func, ret)
+        M.apply_signature(bufnr, func, params, ret)
       end)
     end)
   end)
