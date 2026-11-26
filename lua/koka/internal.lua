@@ -20,7 +20,6 @@ local function init()
   if vim.g.kokanvim_loaded then
     return
   end
-  vim.g.kokanvim_loaded = true
 
   -- Setup TreeSitter commands and ensure parser is installed
   local ts_commands = require('koka.treesitter')
@@ -30,6 +29,9 @@ local function init()
   require('koka.commands.codelens').setup()
   require('koka.commands').setup()
   require('koka.commands.inlay').setup()
+
+  -- Mark loaded only after setup succeeds.
+  vim.g.kokanvim_loaded = true
 end
 
 M.ftplugin = function()
