@@ -262,3 +262,46 @@ describe('koka.debugger _parse_sigs', function()
     assert.is_nil(effects.add)
   end)
 end)
+
+describe('koka.commands.inlay toggle', function()
+  local inlay
+
+  before_each(function()
+    package.loaded['koka.config.internal'] = nil
+    package.loaded['koka.project'] = nil
+    package.loaded['koka.treesitter'] = nil
+    package.loaded['koka.debugger'] = nil
+    package.loaded['koka.commands.inlay'] = nil
+    inlay = require('koka.commands.inlay')
+  end)
+
+  it('drops an in-flight result after toggle-off', function()
+    local bufnr = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { 'fun main() { val a = 1 + 2 }' })
+    vim.api.nvim_get_current_buf = function()
+      return bufnr
+    end
+
+    local saved_gen
+    local orig_eval = package.loaded['koka.debugger']
+    package.loaded['koka.debugger'] = {
+      eval_calls = function(_, _, _, _, cb)
+        saved_gen = 'called'
+        cb({ ['add(1, 2)'] = '3' }, {}, nil)
+      end,
+    }
+    package.loaded['koka.commands.inlay'] = nil
+    inlay = require('koka.commands.inlay')
+
+    local config = require('koka.config.internal')
+    config.inlay.enabled = true
+    inlay.refresh(bufnr, false)
+    assert.equal('called', saved_gen)
+
+    config.inlay.enabled = true
+    inlay.toggle()
+    assert.is_false(config.inlay.enabled)
+
+    package.loaded['koka.debugger'] = orig_eval
+  end)
+end)

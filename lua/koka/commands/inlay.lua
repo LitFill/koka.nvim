@@ -211,6 +211,18 @@ function M.toggle()
     M.refresh(bufnr, true)
     vim.notify('koka.nvim: inlay hints enabled', vim.log.levels.INFO)
   else
+    -- Bump the generation and stop the timer. An in-flight callback is dropped.
+    local s = state[bufnr]
+    if s then
+      s.gen = s.gen + 1
+      if s.timer then
+        pcall(function()
+          s.timer:stop()
+          s.timer:close()
+        end)
+        s.timer = nil
+      end
+    end
     M.clear(bufnr)
     vim.notify('koka.nvim: inlay hints disabled', vim.log.levels.INFO)
   end
