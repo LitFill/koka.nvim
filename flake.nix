@@ -1,5 +1,5 @@
 {
-  "description" = "Koka neovim plugin";
+  description = "Koka neovim plugin";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
@@ -10,7 +10,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     flake-utils.url = "github:numtide/flake-utils";
-    koka.url = "github:syaiful6/koka-overlay";
     # Pinned nixpkgs that provides koka 3.2.9 (matches the other koka projects).
     koka-nixpkgs.url = "github:NixOS/nixpkgs/1c89083e451e891152365b799595cf7790a43325";
   };
@@ -22,17 +21,17 @@
     gen-luarc,
     git-hooks,
     flake-utils,
+    koka-nixpkgs,
     ...
-  } @ inputs: let
-    koka-overlay = final: prev: {
-      kokapkgs = inputs.koka.packages.${prev.system};
-    };
+  }: let
     name = "kokanvim";
+
     plugin-overlay = import ./nix/plugin-overlay.nix {inherit name self;};
     ci-overlay = import ./nix/ci-overlay.nix {
       inherit self;
       plugin-name = name;
     };
+
     systems = [
       "aarch64-linux"
       "aarch64-darwin"
@@ -44,14 +43,16 @@
       pkgs = import nixpkgs {
         inherit system;
         overlays = [
-          koka-overlay
           plugin-overlay
           ci-overlay
           neorocks.overlays.default
           gen-luarc.overlays.default
         ];
       };
-      koka = inputs.koka-nixpkgs.legacyPackages.${system}.koka;
+
+      # koka 3.2.9 from the pinned nixpkgs, not the floating one above.
+      koka = koka-nixpkgs.legacyPackages.${system}.koka;
+
       luarc-plugins = with pkgs.lua51Packages; (with pkgs.vimPlugins; [
         toggleterm-nvim
         telescope-nvim
@@ -73,25 +74,17 @@
         ];
       };
 
-      type-check-nightly = git-hooks.lib.${system}.run {
-        src = self;
-        hooks = {
-          lua-ls = {
+      mkTypeCheck = luarc:
+        git-hooks.lib.${system}.run {
+          src = self;
+          hooks.lua-ls = {
             enable = true;
-            settings.configuration = luarc-nightly;
+            settings.configuration = luarc;
           };
         };
-      };
 
-      type-check-stable = git-hooks.lib.${system}.run {
-        src = self;
-        hooks = {
-          lua-ls = {
-            enable = true;
-            settings.configuration = luarc-stable;
-          };
-        };
-      };
+      type-check-nightly = mkTypeCheck luarc-nightly;
+      type-check-stable = mkTypeCheck luarc-stable;
 
       pre-commit-check = git-hooks.lib.${system}.run {
         src = self;
@@ -128,34 +121,19 @@
       packages = rec {
         default = kokanvim;
         kokanvim = pkgs.kokanvim-dev;
-        inherit
-          (pkgs)
-          nvim-minimal-stable
-          nvim-minimal-nightly
-          ;
+        inherit (pkgs) nvim-minimal-stable nvim-minimal-nightly;
       };
 
       checks = {
-        inherit
-          type-check-stable
-          type-check-nightly
-          pre-commit-check
-          ;
-        inherit
-          (pkgs)
-          nvim-stable-tests
-          nvim-nightly-tests
-          ;
+        inherit type-check-stable type-check-nightly pre-commit-check;
+        inherit (pkgs) nvim-stable-tests nvim-nightly-tests;
       };
 
       formatter = pkgs.alejandra;
     })
     // {
       overlays = {
-        inherit
-          ci-overlay
-          plugin-overlay
-          ;
+        inherit ci-overlay plugin-overlay;
         default = plugin-overlay;
       };
     };
