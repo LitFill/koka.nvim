@@ -117,14 +117,6 @@ function M.find_runnables(bufnr)
   end
 
   if #runnables > 0 then
-    -- When a module is declared, only `pub` functions are runnable.
-    if M._has_module_declaration(bufnr) then
-      local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-      runnables = vim.tbl_filter(function(r)
-        local text = lines[r.line + 1] or ''
-        return r.name == 'main' or text:match('^%s*pub%s+fun') ~= nil
-      end, runnables)
-    end
     return runnables
   end
 
@@ -137,13 +129,11 @@ end
 ---@return table[] runnables
 function M._find_runnables_fallback(bufnr)
   local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-  local has_module = M._has_module_declaration(bufnr)
   local runnables = {}
 
   for line_nr, line in ipairs(lines) do
-    local is_pub = line:match('^%s*pub%s+fun%s+') ~= nil
     local func_name = line:match('^%s*pub%s+fun%s+([%w%-]+)%s*%(') or line:match('^%s*fun%s+([%w%-]+)%s*%(')
-    if func_name and (not has_module or is_pub or func_name == 'main') then
+    if func_name then
       local func_type = nil
       if func_name == 'main' then
         func_type = 'run'
@@ -166,19 +156,6 @@ function M._find_runnables_fallback(bufnr)
   end
 
   return runnables
-end
-
----Check if buffer has module declaration
----@param bufnr number
----@return boolean
-function M._has_module_declaration(bufnr)
-  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-  for _, line in ipairs(lines) do
-    if line:match('^%s*module%s+[%w%-]+') then
-      return true
-    end
-  end
-  return false
 end
 
 ---Check whether an argument source text is a single literal value.

@@ -85,7 +85,7 @@ describe('koka.commands.codelens', function()
       assert.equal('testPrivate', runnables[2].command.arguments[3])
     end)
 
-    it('should require pub functions when module is declared', function()
+    it('should detect non-pub runnable functions when module is declared', function()
       local bufnr = vim.api.nvim_create_buf(false, true)
       local lines = {
         'module test',
@@ -102,8 +102,10 @@ describe('koka.commands.codelens', function()
 
       local runnables = codelens.get_codelenses(bufnr)
 
-      assert.equal(1, #runnables) -- Only pub function should be detected
+      -- main is the entry point and test* is runnable regardless of pub.
+      assert.equal(2, #runnables)
       assert.equal('main', runnables[1].command.arguments[3])
+      assert.equal('testPrivate', runnables[2].command.arguments[3])
     end)
 
     it('should ignore non-runnable functions', function()
