@@ -636,7 +636,7 @@ end
 local function find_val_type(lines, name)
   local pats = {
     '^%s*val%s+' .. vim.pesc(name) .. '%s*:%s*([^=]-)%s*=',
-    '^%s*var%s+' .. vim.pesc(name) .. '%s*:%s*([^=]-)%s*=',
+    '^%s*var%s+' .. vim.pesc(name) .. '%s*:%s*([^:]-)%s*:=',
   }
   for _, pat in ipairs(pats) do
     for _, line in ipairs(lines) do
