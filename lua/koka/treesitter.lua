@@ -720,6 +720,19 @@ function M.find_call_at(bufnr, line, col)
   return nil
 end
 
+-- Node types that represent a value expression (Koka grammar).
+local value_node_types = {
+  atom = true,
+  name = true,
+  id = true,
+  int = true,
+  float = true,
+  string = true,
+  char = true,
+  bool = true,
+  unit = true,
+}
+
 ---Find the expression (call, dot chain, or atom) at a 0-indexed position.
 ---Prefers the innermost enclosing call or chain, else the atom or name.
 ---@param bufnr number
@@ -747,13 +760,18 @@ function M.find_expr_at(bufnr, line, col)
     if (t == 'opexpr' or t == 'ntlexpr') and not call then
       call = n
     end
-    if (t == 'atom' or t == 'name') and not atom then
+    if not atom and value_node_types[t] then
       atom = n
     end
     n = n:parent()
   end
 
   local chosen = call or atom
+  if not chosen and node and node:type() == 'block' then
+    -- Standalone expression statement: the cursor resolves to the enclosing
+    -- block, so descend to its first statement.
+    chosen = node:named_child(0)
+  end
   if not chosen then
     return nil
   end
