@@ -644,6 +644,84 @@ local function build_arms(ctors, fn_name, indent)
   return arms
 end
 
+-- Cache for the stdlib source root, derived from `koka --version`.
+local stdlib_root_cache = nil
+
+---Return the stdlib source root (share/.../lib), or false when unknown.
+---@return string|false
+local function stdlib_root()
+  if stdlib_root_cache ~= nil then
+    return stdlib_root_cache
+  end
+  local out = vim.fn.system { 'koka', '--version' } or ''
+  local lib = out:match('lib%s*:%s*(.-/lib/koka/v[%d%.]+)')
+  if not lib then
+    stdlib_root_cache = false
+    return false
+  end
+  stdlib_root_cache = (lib:gsub('/lib/koka/', '/share/koka/')) .. '/lib'
+  return stdlib_root_cache
+end
+
+---Find a stdlib type's constructors by parsing the shipped .kk sources.
+---@param name string The type name
+---@return table? ctors Array of {name=string, fields=string[]}
+local function stdlib_constructors(name)
+  local root = stdlib_root()
+  if not root then
+    return nil
+  end
+  local found = vim.fn.system {
+    'grep',
+    '-rlE',
+    '^[[:space:]]*(pub[[:space:]]+)?type[[:space:]]+' .. name .. '([[:space:]<]|$)',
+    root,
+  }
+  local file = vim.split(found or '', '\n')[1]
+  if not file or file == '' then
+    return nil
+  end
+
+  local lines = vim.fn.readfile(file)
+  local start
+  for i, l in ipairs(lines) do
+    if l:match('^%s*(pub%s+)?type%s+' .. name .. '[%s<]') then
+      start = i
+      break
+    end
+  end
+  if not start then
+    return nil
+  end
+
+  local ctors = {}
+  for i = start + 1, #lines do
+    local l = lines[i]
+    local cname, rest = l:match('^%s*con%s+([A-Za-z_][A-Za-z0-9_]*)%s*(.*)$')
+    if cname then
+      local fields = {}
+      local inner = rest:match('^%((.*)%)')
+      if inner then
+        for _, seg in ipairs(split_top_commas(inner)) do
+          local fn = seg:match('^%s*[%?]?([A-Za-z_][A-Za-z0-9_]*)')
+          if fn then
+            fields[#fields + 1] = fn
+          end
+        end
+      end
+      ctors[#ctors + 1] = { name = cname, fields = fields }
+    elseif not (l:match('^%s*$') or l:match('^%s*//') or l:match('^%s')) then
+      -- a new top-level form ends the type block
+      break
+    end
+  end
+
+  if #ctors == 0 then
+    return nil
+  end
+  return ctors
+end
+
 ---Fill a `case -> case` match arm with one arm per local constructor.
 ---Returns true when it handled the cursor (async work may follow).
 ---@param bufnr number
@@ -735,10 +813,10 @@ function M.try_fill_match(bufnr, cursor)
         end
       end
       if #ctors == 0 then
-        koka_ui.notify(
-          string.format('case-split: type %s not found in this file (stdlib types unsupported yet)', base),
-          vim.log.levels.WARN
-        )
+        ctors = stdlib_constructors(base) or {}
+      end
+      if #ctors == 0 then
+        koka_ui.notify(string.format('case-split: constructors for %s not found', base), vim.log.levels.WARN)
         return
       end
       local arms = build_arms(ctors, func.name, indent)
