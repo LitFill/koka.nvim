@@ -240,6 +240,7 @@ function M.show_config()
     )
 
     if config.include_dirs and #config.include_dirs > 0 then
+      table.insert(lines, '')
       table.insert(lines, 'Include Directories:')
       for _, dir in ipairs(config.include_dirs) do
         table.insert(lines, string.format('  - %s', dir))
@@ -247,6 +248,7 @@ function M.show_config()
     end
 
     if config.compiler_args and #config.compiler_args > 0 then
+      table.insert(lines, '')
       table.insert(lines, 'Compiler Arguments:')
       for _, arg in ipairs(config.compiler_args) do
         table.insert(lines, string.format('  - %s', arg))
