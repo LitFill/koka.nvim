@@ -647,42 +647,55 @@ end
 ---@return table? call {name=string, nargs=number, row=number, col=number}
 function M._call_name_arity(node, bufnr)
   local count = node:named_child_count()
-  if count ~= 1 and count ~= 2 then
-    return nil
-  end
+  local func_name, nargs
 
-  local atom = node:named_child(0)
-  if atom:type() ~= 'atom' then
-    return nil
-  end
-
-  local call_args
-  if count == 2 then
-    call_args = node:named_child(1)
-    if call_args:type() ~= 'arguments' then
+  if count == 3 then
+    -- UCFM: `recv.method(args)` == `method(recv, args)`.
+    local recv = node:named_child(0)
+    local name_node = node:named_child(1)
+    local call_args = node:named_child(2)
+    if recv:type() ~= 'atom' or name_node:type() ~= 'name' or call_args:type() ~= 'arguments' then
       return nil
     end
+    local qid = name_node:named_child(0)
+    if not qid or qid:type() ~= 'qidentifier' then
+      return nil
+    end
+    func_name = vim.treesitter.get_node_text(qid, bufnr)
+    nargs = call_args:named_child_count() + 1
+  elseif count == 1 or count == 2 then
+    local atom = node:named_child(0)
+    if atom:type() ~= 'atom' then
+      return nil
+    end
+    local call_args
+    if count == 2 then
+      call_args = node:named_child(1)
+      if call_args:type() ~= 'arguments' then
+        return nil
+      end
+    end
+    local name_node = atom:named_child(0)
+    if not name_node or name_node:type() ~= 'name' then
+      return nil
+    end
+    local qid = name_node:named_child(0)
+    if not qid or qid:type() ~= 'qidentifier' then
+      return nil
+    end
+    func_name = vim.treesitter.get_node_text(qid, bufnr)
+    nargs = call_args and call_args:named_child_count() or 0
+  else
+    return nil
   end
 
   if vim.treesitter.get_node_text(node, bufnr):sub(-1) ~= ')' then
     return nil
   end
-
-  local name_node = atom:named_child(0)
-  if not name_node or name_node:type() ~= 'name' then
-    return nil
-  end
-  local qid = name_node:named_child(0)
-  if not qid or qid:type() ~= 'qidentifier' then
-    return nil
-  end
-
-  local func_name = vim.treesitter.get_node_text(qid, bufnr)
   if func_name:find('%.') then
     return nil
   end
 
-  local nargs = call_args and call_args:named_child_count() or 0
   local row, col = node:range()
   return { name = func_name, nargs = nargs, row = row, col = col }
 end
