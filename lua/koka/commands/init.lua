@@ -605,8 +605,7 @@ function M.apply_call_stub(bufnr, call)
   end
   local ret = tvars[n + 1]
 
-  local sig =
-    string.format('fun %s<%s>(%s) : _ %s', call.name, table.concat(tvars, ', '), table.concat(params, ', '), ret)
+  local sig = string.format('fun %s(%s) : _ %s', call.name, table.concat(params, ', '), ret)
   local body = string.format('  throw("not implemented: %s")', call.name)
 
   local last = vim.api.nvim_buf_line_count(bufnr)
