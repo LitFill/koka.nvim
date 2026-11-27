@@ -746,4 +746,52 @@ function M.find_call_at(bufnr, line, col)
   return nil
 end
 
+---Find the expression (call, dot chain, or atom) at a 0-indexed position.
+---Prefers the innermost enclosing call or chain, else the atom or name.
+---@param bufnr number
+---@param line number 0-indexed line
+---@param col number 0-indexed column
+---@return table? expr {text=string, srow=number, scol=number, erow=number, ecol=number}
+function M.find_expr_at(bufnr, line, col)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+
+  local has_parser, parser = pcall(vim.treesitter.get_parser, bufnr, 'koka')
+  if not has_parser or not parser then
+    return nil
+  end
+
+  local tree = parser:parse()[1]
+  if not tree then
+    return nil
+  end
+
+  local node = tree:root():named_descendant_for_point_range(line, col, line, col)
+  local call, atom
+  local n = node
+  while n do
+    local t = n:type()
+    if (t == 'opexpr' or t == 'ntlexpr') and not call then
+      call = n
+    end
+    if (t == 'atom' or t == 'name') and not atom then
+      atom = n
+    end
+    n = n:parent()
+  end
+
+  local chosen = call or atom
+  if not chosen then
+    return nil
+  end
+
+  local srow, scol, erow, ecol = chosen:range()
+  return {
+    text = vim.treesitter.get_node_text(chosen, bufnr),
+    srow = srow,
+    scol = scol,
+    erow = erow,
+    ecol = ecol,
+  }
+end
+
 return M

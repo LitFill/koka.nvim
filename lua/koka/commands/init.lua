@@ -605,6 +605,36 @@ function M.stub_function()
   end
   M.apply_call_stub(bufnr, call)
 end
+
+---Wrap the expression at the cursor in a single-binding match stub.
+function M.case_split()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local treesitter = require('koka.treesitter')
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local expr = treesitter.find_expr_at(bufnr, cursor[1] - 1, cursor[2])
+  if not expr then
+    koka_ui.notify('case-split: no expression at cursor', vim.log.levels.WARN)
+    return
+  end
+  if expr.erow ~= expr.srow then
+    koka_ui.notify('case-split: multi-line expression not supported', vim.log.levels.WARN)
+    return
+  end
+
+  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local first = lines[expr.srow + 1] or ''
+  local indent = first:match('^%s*') or ''
+
+  vim.api.nvim_buf_set_text(
+    bufnr,
+    expr.srow,
+    expr.scol,
+    expr.erow,
+    expr.ecol,
+    { 'match ' .. expr.text, indent .. '  case -> case' }
+  )
+  koka_ui.notify('case-split: wrapped in match (case -> case)', vim.log.levels.INFO)
+end
 ---Show available subcommands in a float
 function M.show_help()
   local lines = {
@@ -617,6 +647,7 @@ function M.show_help()
     '  :Koka set <key> <val>  Set a plugin setting at runtime',
     '  :Koka sig              Write the inferred return type at the cursor',
     '  :Koka stub             Append a throwing stub for the call at the cursor',
+    '  :Koka case-split        Wrap the expression in a match stub',
     '  :Koka refresh_codelens Refresh code lenses',
     '  :Koka inlay [invalidate] Toggle hints or clear the cache',
     '  :Koka goto <file>      Open a .kk file by name',
@@ -809,6 +840,11 @@ local command_tbl = {
   stub = {
     impl = function()
       M.stub_function()
+    end,
+  },
+  ['case-split'] = {
+    impl = function()
+      M.case_split()
     end,
   },
   refresh_codelens = {
