@@ -700,7 +700,7 @@ local function stdlib_constructors(name)
   local found = vim.fn.system {
     'grep',
     '-rlE',
-    '^[[:space:]]*(pub[[:space:]]+)?type[[:space:]]+' .. name .. '([[:space:]<]|$)',
+    '^[[:space:]]*([[:alnum:]_]+[[:space:]]+)*type[[:space:]]+' .. name .. '([[:space:]<]|$)',
     root,
   }
   local file = vim.split(found or '', '\n')[1]
@@ -711,7 +711,7 @@ local function stdlib_constructors(name)
   local lines = vim.fn.readfile(file)
   local start
   for i, l in ipairs(lines) do
-    if l:match('^%s*(pub%s+)?type%s+' .. name .. '[%s<]') then
+    if l:match('^%s*.*type%s+' .. name .. '[%s<]') then
       start = i
       break
     end
