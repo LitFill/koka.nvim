@@ -122,7 +122,7 @@ function M.find_runnables(bufnr)
       local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
       runnables = vim.tbl_filter(function(r)
         local text = lines[r.line + 1] or ''
-        return text:match('^%s*pub%s+fun') ~= nil
+        return r.name == 'main' or text:match('^%s*pub%s+fun') ~= nil
       end, runnables)
     end
     return runnables
@@ -141,12 +141,9 @@ function M._find_runnables_fallback(bufnr)
   local runnables = {}
 
   for line_nr, line in ipairs(lines) do
-    local pub_match = has_module and line:match('^%s*pub%s+fun%s+([%w%-]+)%s*%(')
-      or line:match('^%s*pub%s+fun%s+([%w%-]+)%s*%(')
-    local fun_match = not has_module and line:match('^%s*fun%s+([%w%-]+)%s*%(')
-
-    local func_name = pub_match or fun_match
-    if func_name then
+    local is_pub = line:match('^%s*pub%s+fun%s+') ~= nil
+    local func_name = line:match('^%s*pub%s+fun%s+([%w%-]+)%s*%(') or line:match('^%s*fun%s+([%w%-]+)%s*%(')
+    if func_name and (not has_module or is_pub or func_name == 'main') then
       local func_type = nil
       if func_name == 'main' then
         func_type = 'run'
