@@ -606,11 +606,162 @@ function M.stub_function()
   M.apply_call_stub(bufnr, call)
 end
 
----Wrap the expression at the cursor in a single-binding match stub.
+---Extract the base type name from a type annotation (strip generics and module).
+---@param t string
+---@return string
+local function type_basename(t)
+  return t:match('^%s*([A-Za-z_][A-Za-z0-9_]*)') or t
+end
+
+---Parse "name : type" pairs from a parameter list string.
+---@param inner string
+---@return table<string,string>
+local function parse_param_types(inner)
+  local map = {}
+  for _, seg in ipairs(split_top_commas(inner)) do
+    local nm, ty = seg:match('^%s*[%?]?([A-Za-z_][A-Za-z0-9_]*)%s*:%s*(.+)$')
+    if nm and ty then
+      map[nm] = ty
+    end
+  end
+  return map
+end
+
+---Build one match arm per constructor, each body a throw.
+---@param ctors table[] Array of {name=string, fields=string[]}
+---@param fn_name string
+---@param indent string
+---@return string[] arms
+local function build_arms(ctors, fn_name, indent)
+  local arms = {}
+  for _, c in ipairs(ctors) do
+    local pat = c.name
+    if c.fields and #c.fields > 0 then
+      pat = c.name .. '(' .. table.concat(c.fields, ', ') .. ')'
+    end
+    arms[#arms + 1] = string.format('%s%s -> throw("not implemented: %s")', indent, pat, fn_name)
+  end
+  return arms
+end
+
+---Fill a `case -> case` match arm with one arm per local constructor.
+---Returns true when it handled the cursor (async work may follow).
+---@param bufnr number
+---@param cursor number[]
+---@return boolean
+function M.try_fill_match(bufnr, cursor)
+  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local line = cursor[1] - 1
+
+  local arm
+  for i = line, math.max(0, line - 3), -1 do
+    if (lines[i + 1] or ''):match('^%s*case%s*->%s*case%s*$') then
+      arm = i
+      break
+    end
+  end
+  if not arm then
+    return false
+  end
+
+  local match_line = arm - 1
+  local scrutinee = (lines[match_line + 1] or ''):match('^%s*match%s+(.+)%s*$')
+  if not scrutinee then
+    return false
+  end
+
+  local treesitter = require('koka.treesitter')
+  local func = treesitter.find_function_at(bufnr, match_line)
+  if not func then
+    return false
+  end
+
+  local sig = lines[func.row + 1] or ''
+  local open = sig:find('%(', 1, true)
+  local inner = ''
+  if open then
+    local depth, close = 0, nil
+    for i = open, #sig do
+      local c = sig:sub(i, i)
+      if c == '(' then
+        depth = depth + 1
+      elseif c == ')' then
+        depth = depth - 1
+        if depth == 0 then
+          close = i
+          break
+        end
+      end
+    end
+    if close then
+      inner = sig:sub(open + 1, close - 1)
+    end
+  end
+
+  local ty = parse_param_types(inner)[scrutinee]
+  if not ty then
+    koka_ui.notify('case-split: scrutinee is not an annotated parameter', vim.log.levels.WARN)
+    return true
+  end
+  local base = type_basename(ty)
+
+  local clients = require('koka.lsp.helpers').get_active_lsp_clients(bufnr)
+  if #clients == 0 then
+    koka_ui.notify('case-split: no LSP client for constructors', vim.log.levels.WARN)
+    return true
+  end
+
+  local file_path = vim.api.nvim_buf_get_name(bufnr)
+  local indent = (lines[arm + 1] or ''):match('^%s*') or '    '
+  clients[1]:request(
+    'textDocument/documentSymbol',
+    { textDocument = { uri = vim.uri_from_fname(file_path) } },
+    function(err, result)
+      if err or not result then
+        koka_ui.notify('case-split: documentSymbol failed', vim.log.levels.WARN)
+        return
+      end
+      local ctors = {}
+      for _, s in ipairs(result) do
+        if s.name == base then
+          for _, c in ipairs(s.children or {}) do
+            local fields = {}
+            for _, f in ipairs(c.children or {}) do
+              fields[#fields + 1] = f.name
+            end
+            ctors[#ctors + 1] = { name = c.name, fields = fields }
+          end
+          break
+        end
+      end
+      if #ctors == 0 then
+        koka_ui.notify(
+          string.format('case-split: type %s not found in this file (stdlib types unsupported yet)', base),
+          vim.log.levels.WARN
+        )
+        return
+      end
+      local arms = build_arms(ctors, func.name, indent)
+      vim.schedule(function()
+        if vim.api.nvim_buf_is_valid(bufnr) then
+          vim.api.nvim_buf_set_lines(bufnr, arm, arm + 1, false, arms)
+        end
+      end)
+      koka_ui.notify(string.format('case-split: %d constructor arms for %s', #ctors, base), vim.log.levels.INFO)
+    end
+  )
+  return true
+end
+
+---Fill a match arm with constructors, or wrap the cursor expression in a stub.
 function M.case_split()
   local bufnr = vim.api.nvim_get_current_buf()
-  local treesitter = require('koka.treesitter')
   local cursor = vim.api.nvim_win_get_cursor(0)
+  if M.try_fill_match(bufnr, cursor) then
+    return
+  end
+
+  local treesitter = require('koka.treesitter')
   local expr = treesitter.find_expr_at(bufnr, cursor[1] - 1, cursor[2])
   if not expr then
     koka_ui.notify('case-split: no expression at cursor', vim.log.levels.WARN)
