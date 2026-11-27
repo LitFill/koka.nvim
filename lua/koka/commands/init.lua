@@ -1251,7 +1251,7 @@ end
 ---Setup Koka user commands
 function M.setup()
   vim.api.nvim_create_user_command('Koka', koka_command_imp, {
-    nargs = '?',
+    nargs = '*',
     complete = function(arg_lead, cmdline, _)
       local subcmd, subcmd_arg_lead = cmdline:match("^['<,'>]*Koka[!]*%s(%S+)%s(.*)$")
       if subcmd and subcmd_arg_lead and command_tbl[subcmd] and command_tbl[subcmd].complete then
