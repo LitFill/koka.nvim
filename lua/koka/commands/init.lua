@@ -324,7 +324,7 @@ end
 ---@return string? name
 ---@return string? type
 local function parse_sig_line(line)
-  local lhs, rhs = line:match('^(.+):%s+(.+)$')
+  local lhs, rhs = line:match('^([^:]+):%s+(.+)$')
   if not lhs or not rhs then
     return nil
   end
@@ -486,7 +486,7 @@ function M.apply_signature(bufnr, func, params, ret)
     return a.col > b.col
   end)
   for _, ins in ipairs(inserts) do
-    vim.api.nvim_buf_set_text(bufnr, func.row, ins.col, func.row, ins.col, ins.text)
+    vim.api.nvim_buf_set_text(bufnr, func.row, ins.col, func.row, ins.col, { ins.text })
   end
   koka_ui.notify(string.format('sig: annotated %s', func.name), vim.log.levels.INFO)
 end
@@ -504,10 +504,14 @@ function M.write_signature()
   local file_path = vim.api.nvim_buf_get_name(bufnr)
   local project = require('koka.project')
   project.get_resolved_config(file_path, function(config)
-    local cmd = koka_cmd.build(config, { mode = '-c', file = file_path, showtypesigs = true })
     local cwd = config.cwd or vim.fs.dirname(file_path)
-    vim.system(cmd, { cwd = cwd, text = true }, function(res)
-      vim.schedule(function()
+
+    ---Run --showtypesigs with the given mode, yield the inferred type.
+    ---@param mode string
+    ---@param cb fun(ty: string?)
+    local function infer(mode, cb)
+      local cmd = koka_cmd.build(config, { mode = mode, file = file_path, showtypesigs = true })
+      vim.system(cmd, { cwd = cwd, text = true }, function(res)
         local out = table.concat({ res.stdout or '', res.stderr or '' }, '\n')
         local inferred
         for _, l in ipairs(vim.split(out, '\n')) do
@@ -517,19 +521,37 @@ function M.write_signature()
             break
           end
         end
-        if not inferred then
+        vim.schedule(function()
+          cb(inferred)
+        end)
+      end)
+    end
+
+    ---@param inferred string
+    local function apply(inferred)
+      local params, ret = parse_type(inferred)
+      if not params then
+        koka_ui.notify(string.format('sig: could not parse type: %s', inferred), vim.log.levels.WARN)
+        return
+      end
+      M.apply_signature(bufnr, func, params, ret)
+    end
+
+    -- A file without `main` fails `-c`; library mode (`-l`) typechecks it.
+    infer('-c', function(inferred)
+      if inferred then
+        apply(inferred)
+        return
+      end
+      infer('-l', function(inferred2)
+        if inferred2 then
+          apply(inferred2)
+        else
           koka_ui.notify(
             string.format('sig: no inferred type for %s (file may not typecheck)', func.name),
             vim.log.levels.WARN
           )
-          return
         end
-        local params, ret = parse_type(inferred)
-        if not params then
-          koka_ui.notify(string.format('sig: could not parse type: %s', inferred), vim.log.levels.WARN)
-          return
-        end
-        M.apply_signature(bufnr, func, params, ret)
       end)
     end)
   end)
