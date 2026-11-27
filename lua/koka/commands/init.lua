@@ -427,7 +427,7 @@ function M.apply_signature(bufnr, func, params, ret)
     koka_ui.notify('sig: function line not found', vim.log.levels.ERROR)
     return
   end
-  local open = text:find('%(', 1, true)
+  local open = text:find('(', 1, true)
   if not open then
     koka_ui.notify('sig: parameter list not on the function line', vim.log.levels.WARN)
     return
@@ -765,7 +765,7 @@ function M.try_fill_match(bufnr, cursor)
   end
 
   local sig = lines[func.row + 1] or ''
-  local open = sig:find('%(', 1, true)
+  local open = sig:find('(', 1, true)
   local inner = ''
   if open then
     local depth, close = 0, nil
