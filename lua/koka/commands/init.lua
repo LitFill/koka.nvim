@@ -697,7 +697,11 @@ local function stdlib_constructors(name)
   local ctors = {}
   for i = start + 1, #lines do
     local l = lines[i]
+    -- `con` is optional in modern Koka; accept both `con Name` and a bare `Name`.
     local cname, rest = l:match('^%s*con%s+([A-Za-z_][A-Za-z0-9_]*)%s*(.*)$')
+    if not cname then
+      cname, rest = l:match('^%s+([A-Za-z_][A-Za-z0-9_]*)%s*(.*)$')
+    end
     if cname then
       local fields = {}
       local inner = rest:match('^%((.*)%)')
