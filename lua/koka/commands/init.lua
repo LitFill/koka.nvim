@@ -467,9 +467,16 @@ function M.apply_signature(bufnr, func, params, ret)
       local lead = seg:match('^%s*')
       local name_part = seg:sub(#lead + 1):match('^[%?]?[A-Za-z_][A-Za-z0-9_]*')
       local has_type = seg:find(':', 1, true) ~= nil
-      local is_default = seg:find('?', 1, true) ~= nil
+      local is_default = seg:find('=', 1, true) ~= nil
       local inferred = params[idx]
-      if name_part and not has_type and not is_default and inferred and inferred.type then
+      if
+        name_part
+        and not has_type
+        and not is_default
+        and inferred
+        and inferred.type
+        and not inferred.type:match('^%?')
+      then
         local col = seg_start + #lead + #name_part - 1
         inserts[#inserts + 1] = { col = col, text = ': ' .. inferred.type }
       end
