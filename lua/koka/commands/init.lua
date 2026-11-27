@@ -533,113 +533,77 @@ function M.write_signature()
   end)
 end
 
----Replace a function with a type-annotated stub that throws.
----The stub uses an open effect row so `throw` typechecks for any result type.
+---Type variable names for generated stubs, in order.
+local STUB_TVARS = {
+  'a',
+  'b',
+  'c',
+  'd',
+  'e',
+  'f',
+  'g',
+  'h',
+  'i',
+  'j',
+  'k',
+  'l',
+  'm',
+  'n',
+  'o',
+  'p',
+  'q',
+  'r',
+  's',
+  't',
+  'u',
+  'v',
+  'w',
+}
+
+---Generate a fully polymorphic throwing stub for a call and append it.
+---The stub has an open effect row; the caller is left untouched.
 ---@param bufnr number
----@param func table {name=string, row=number, erow=number}
----@param params table Array of {name=string?, type=string?}
----@param ret string?
-function M.apply_stub(bufnr, func, params, ret)
+---@param call table {name=string, nargs=number}
+function M.apply_call_stub(bufnr, call)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
-  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-  local first = lines[func.row + 1] or ''
 
-  -- Source parameter names, in order, as a fallback when counts differ.
-  local src_names = {}
-  local open = first:find('%(', 1, true)
-  if open then
-    local depth, close = 0, nil
-    for i = open, #first do
-      local c = first:sub(i, i)
-      if c == '(' then
-        depth = depth + 1
-      elseif c == ')' then
-        depth = depth - 1
-        if depth == 0 then
-          close = i
-          break
-        end
-      end
-    end
-    if close then
-      local inner = first:sub(open + 1, close - 1)
-      if inner:match('%S') then
-        for _, seg in ipairs(split_top_commas(inner)) do
-          local nm = seg:match('^%s*[%?]?([A-Za-z_][A-Za-z0-9_]*)')
-          src_names[#src_names + 1] = nm
-        end
-      end
-    end
+  local n = call.nargs
+  local tvars = {}
+  for i = 1, n + 1 do
+    tvars[i] = STUB_TVARS[i] or ('t' .. i)
   end
 
-  local parts = {}
-  for i, p in ipairs(params) do
-    local nm = p.name or src_names[i]
-    if nm and p.type then
-      parts[#parts + 1] = string.format('%s : %s', nm, p.type)
-    elseif nm then
-      parts[#parts + 1] = nm
-    end
+  local params = {}
+  for i = 1, n do
+    params[i] = string.format('arg%d : %s', i, tvars[i])
   end
-  if #parts == 0 and #src_names > 0 then
-    for _, nm in ipairs(src_names) do
-      parts[#parts + 1] = nm
-    end
-  end
+  local ret = tvars[n + 1]
 
-  local params_str = table.concat(parts, ', ')
-  local ret_ann = ret or '()'
-  local sig = string.format('fun %s(%s) : _ %s', func.name, params_str, ret_ann)
-  local body = string.format('  throw("not implemented: %s")', func.name)
+  local sig =
+    string.format('fun %s<%s>(%s) : _ %s', call.name, table.concat(tvars, ', '), table.concat(params, ', '), ret)
+  local body = string.format('  throw("not implemented: %s")', call.name)
 
-  vim.api.nvim_buf_set_text(bufnr, func.row, 0, func.erow, -1, { sig, body })
-  koka_ui.notify(string.format('stub: %s stubbed (open effect row, throws)', func.name), vim.log.levels.INFO)
+  local last = vim.api.nvim_buf_line_count(bufnr)
+  vim.api.nvim_buf_set_lines(bufnr, last, last, false, { '', sig, body })
+  koka_ui.notify(
+    string.format('stub: %s/%d args appended (open effect row; a pure caller must open its row)', call.name, n),
+    vim.log.levels.INFO
+  )
 end
 
----Infer and write a throwing stub for the function under the cursor.
+---Generate a throwing stub for the call under the cursor.
 function M.stub_function()
   local bufnr = vim.api.nvim_get_current_buf()
   local treesitter = require('koka.treesitter')
-  local line = vim.api.nvim_win_get_cursor(0)[1] - 1
-  local func = treesitter.find_function_at(bufnr, line)
-  if not func then
-    koka_ui.notify('stub: no function at cursor', vim.log.levels.WARN)
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local call = treesitter.find_call_at(bufnr, cursor[1] - 1, cursor[2])
+  if not call then
+    koka_ui.notify('stub: no call at cursor', vim.log.levels.WARN)
     return
   end
-  local file_path = vim.api.nvim_buf_get_name(bufnr)
-  local project = require('koka.project')
-  project.get_resolved_config(file_path, function(config)
-    local cmd = koka_cmd.build(config, { mode = '-c', file = file_path, showtypesigs = true })
-    local cwd = config.cwd or vim.fs.dirname(file_path)
-    vim.system(cmd, { cwd = cwd, text = true }, function(res)
-      vim.schedule(function()
-        local out = table.concat({ res.stdout or '', res.stderr or '' }, '\n')
-        local inferred
-        for _, l in ipairs(vim.split(out, '\n')) do
-          local name, ty = parse_sig_line(l)
-          if name == func.name then
-            inferred = ty
-            break
-          end
-        end
-        if not inferred then
-          koka_ui.notify(
-            string.format('stub: no inferred type for %s (file may not typecheck)', func.name),
-            vim.log.levels.WARN
-          )
-          return
-        end
-        local params, ret = parse_type(inferred)
-        if not params then
-          koka_ui.notify(string.format('stub: could not parse type: %s', inferred), vim.log.levels.WARN)
-          return
-        end
-        M.apply_stub(bufnr, func, params, ret)
-      end)
-    end)
-  end)
+  M.apply_call_stub(bufnr, call)
 end
 ---Show available subcommands in a float
 function M.show_help()
@@ -652,7 +616,7 @@ function M.show_help()
     '  :Koka config           Show project configuration',
     '  :Koka set <key> <val>  Set a plugin setting at runtime',
     '  :Koka sig              Write the inferred return type at the cursor',
-    '  :Koka stub             Replace the function with a throwing stub',
+    '  :Koka stub             Append a throwing stub for the call at the cursor',
     '  :Koka refresh_codelens Refresh code lenses',
     '  :Koka inlay [invalidate] Toggle hints or clear the cache',
     '  :Koka goto <file>      Open a .kk file by name',

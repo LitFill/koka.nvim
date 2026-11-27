@@ -666,4 +666,84 @@ function M.find_function_at(bufnr, line)
   return best
 end
 
+---Read a call node's head name and argument count.
+---Mirrors _try_call's name rules but does not require static arguments.
+---@param node TSNode An opexpr or ntlexpr node
+---@param bufnr number
+---@return table? call {name=string, nargs=number, row=number, col=number}
+function M._call_name_arity(node, bufnr)
+  local count = node:named_child_count()
+  if count ~= 1 and count ~= 2 then
+    return nil
+  end
+
+  local atom = node:named_child(0)
+  if atom:type() ~= 'atom' then
+    return nil
+  end
+
+  local call_args
+  if count == 2 then
+    call_args = node:named_child(1)
+    if call_args:type() ~= 'arguments' then
+      return nil
+    end
+  end
+
+  if vim.treesitter.get_node_text(node, bufnr):sub(-1) ~= ')' then
+    return nil
+  end
+
+  local name_node = atom:named_child(0)
+  if not name_node or name_node:type() ~= 'name' then
+    return nil
+  end
+  local qid = name_node:named_child(0)
+  if not qid or qid:type() ~= 'qidentifier' then
+    return nil
+  end
+
+  local func_name = vim.treesitter.get_node_text(qid, bufnr)
+  if func_name:find('%.') then
+    return nil
+  end
+
+  local nargs = call_args and call_args:named_child_count() or 0
+  local row, col = node:range()
+  return { name = func_name, nargs = nargs, row = row, col = col }
+end
+
+---Find the innermost call enclosing a 0-indexed position.
+---@param bufnr number
+---@param line number 0-indexed line
+---@param col number 0-indexed column
+---@return table? call {name=string, nargs=number, row=number, col=number}
+function M.find_call_at(bufnr, line, col)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+
+  local has_parser, parser = pcall(vim.treesitter.get_parser, bufnr, 'koka')
+  if not has_parser or not parser then
+    return nil
+  end
+
+  local tree = parser:parse()[1]
+  if not tree then
+    return nil
+  end
+
+  local node = tree:root():named_descendant_for_point_range(line, col, line, col)
+  while node do
+    local t = node:type()
+    if t == 'opexpr' or t == 'ntlexpr' then
+      local r = M._call_name_arity(node, bufnr)
+      if r then
+        return r
+      end
+    end
+    node = node:parent()
+  end
+
+  return nil
+end
+
 return M
