@@ -141,7 +141,7 @@ function M.run_tests(file_path, test_names)
 
     local function summarize()
       local passed, failed = 0, 0
-      for i = 1, index do
+      for i = 1, #test_names do
         if results[i] then
           passed = passed + 1
         else
@@ -167,11 +167,18 @@ function M.run_tests(file_path, test_names)
         file = file_path,
         main_entry = name,
       })
-
+      local out = {}
       vim.fn.jobstart(cmd, {
         cwd = cwd,
+        on_stdout = function(_, data)
+          out[#out + 1] = table.concat(data)
+        end,
+        on_stderr = function(_, data)
+          out[#out + 1] = table.concat(data)
+        end,
         on_exit = function(_, code)
-          results[index] = code == 0
+          local log = table.concat(out)
+          results[index] = code == 0 and not log:find('uncaught exception', 1, true)
           run_next()
         end,
       })
