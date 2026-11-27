@@ -646,6 +646,10 @@ local function build_arms(ctors, fn_name, indent)
   return arms
 end
 
+-- Placeholder match arm emitted by the case-split stub. Case-split replaces it
+-- with one arm per constructor. Must be valid Koka (Koka has no `case` keyword).
+local MATCH_STUB_ARM = '_ -> throw("not implemented")'
+
 -- Cache for the stdlib source root, derived from `koka --version`.
 local stdlib_root_cache = nil
 
@@ -739,7 +743,7 @@ function M.try_fill_match(bufnr, cursor)
 
   local arm
   for i = line, math.max(0, line - 3), -1 do
-    if (lines[i + 1] or ''):match('^%s*case%s*->%s*case%s*$') then
+    if vim.trim(lines[i + 1] or '') == MATCH_STUB_ARM then
       arm = i
       break
     end
@@ -866,9 +870,9 @@ function M.case_split()
     expr.scol,
     expr.erow,
     expr.ecol,
-    { 'match ' .. expr.text, indent .. '  case -> case' }
+    { 'match ' .. expr.text, indent .. '  ' .. MATCH_STUB_ARM }
   )
-  koka_ui.notify('case-split: wrapped in match (case -> case)', vim.log.levels.INFO)
+  koka_ui.notify('case-split: wrapped in match stub', vim.log.levels.INFO)
 end
 ---Show available subcommands in a float
 function M.show_help()
