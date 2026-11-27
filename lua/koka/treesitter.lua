@@ -705,7 +705,7 @@ function M.find_call_at(bufnr, line, col)
     return nil
   end
 
-  local node = tree:root():named_descendant_for_point_range(line, col, line, col)
+  local node = vim.treesitter.get_node { bufnr = bufnr, pos = { line, col } }
   while node do
     local t = node:type()
     if t == 'opexpr' or t == 'ntlexpr' then
@@ -739,7 +739,7 @@ function M.find_expr_at(bufnr, line, col)
     return nil
   end
 
-  local node = tree:root():named_descendant_for_point_range(line, col, line, col)
+  local node = vim.treesitter.get_node { bufnr = bufnr, pos = { line, col } }
   local call, atom
   local n = node
   while n do
