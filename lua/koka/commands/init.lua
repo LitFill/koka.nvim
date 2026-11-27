@@ -629,6 +629,26 @@ local function parse_param_types(inner)
   return map
 end
 
+---Find the annotated type of a local `val`/`var` binding by name.
+---@param lines string[] Buffer lines
+---@param name string Binding name
+---@return string? ty The annotated type, or nil
+local function find_val_type(lines, name)
+  local pats = {
+    '^%s*val%s+' .. vim.pesc(name) .. '%s*:%s*([^=]-)%s*=',
+    '^%s*var%s+' .. vim.pesc(name) .. '%s*:%s*([^=]-)%s*=',
+  }
+  for _, pat in ipairs(pats) do
+    for _, line in ipairs(lines) do
+      local ty = line:match(pat)
+      if ty then
+        return vim.trim(ty)
+      end
+    end
+  end
+  return nil
+end
+
 ---Build one match arm per constructor, each body a throw.
 ---@param ctors table[] Array of {name=string, fields=string[]}
 ---@param fn_name string
@@ -788,7 +808,10 @@ function M.try_fill_match(bufnr, cursor)
 
   local ty = parse_param_types(inner)[scrutinee]
   if not ty then
-    koka_ui.notify('case-split: scrutinee is not an annotated parameter', vim.log.levels.WARN)
+    ty = find_val_type(lines, scrutinee)
+  end
+  if not ty then
+    koka_ui.notify('case-split: scrutinee is not an annotated parameter or val binding', vim.log.levels.WARN)
     return true
   end
   local base = type_basename(ty)
