@@ -141,6 +141,12 @@
   (identifier
     (varid) @variable))
 
+; Local mutable binding: `var x := ...` parses as a `decl` with a `binder`
+; child, not a `pattern`, so the rule above never sees it.
+(decl
+  (binder
+    (qidentifier) @variable))
+
 (paramid
   (identifier
     (varid) @variable.parameter))
