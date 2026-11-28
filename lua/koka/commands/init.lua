@@ -6,6 +6,7 @@
 local M = {}
 local koka_cmd = require('koka.koka_cmd')
 local koka_ui = require('koka.ui')
+local ident = require('koka.ident')
 
 ---@class koka.commands.Subcommand
 ---
@@ -51,36 +52,52 @@ local function open_float(lines, title)
   return buf
 end
 
+---Resolve a compiler-reported path against the directory the compiler ran in.
+---@param file string
+---@param cwd string?
+---@return string
+local function resolve_path(file, cwd)
+  if cwd and not require('koka.project').is_absolute_path(file) then
+    return vim.fs.joinpath(cwd, file)
+  end
+  return file
+end
+
+---Parse one compiler line into a quickfix item.
+---Koka prints `file.kk(12,5): error: ...`; gcc-style `file:12:5:` is kept.
+---@param line string
+---@param cwd string?
+---@return table? item
+local function parse_quickfix_line(line, cwd)
+  local file, lnum, col, msg = line:match('^(.+)%(%s*(%d+)%s*,%s*(%d+)%s*%)%s*:%s*(.*)$')
+  if file then
+    return { filename = resolve_path(file, cwd), lnum = tonumber(lnum), col = tonumber(col), text = msg }
+  end
+  file, lnum, col, msg = line:match('^(.+):(%d+):(%d+):%s*(.*)$')
+  if file then
+    return { filename = resolve_path(file, cwd), lnum = tonumber(lnum), col = tonumber(col), text = msg }
+  end
+  local f2, l2, m2 = line:match('^(.+):(%d+):%s*(.*)$')
+  if f2 then
+    return { filename = resolve_path(f2, cwd), lnum = tonumber(l2), text = m2 }
+  end
+  return nil
+end
+
 ---Parse compiler output lines into a quickfix list and open it.
 ---@param lines string[]
----@return boolean opened true when at least one entry was set
-function M.populate_quickfix(lines)
+---@param cwd string? Directory the compiler ran in
+function M.populate_quickfix(lines, cwd)
   local items = {}
   for _, line in ipairs(lines) do
-    local file, lnum, col, msg = line:match('^(.+):(%d+):(%d+):%s*(.*)$')
-    if file then
-      items[#items + 1] = {
-        filename = file,
-        lnum = tonumber(lnum),
-        col = tonumber(col),
-        text = msg,
-      }
-    else
-      local f2, l2, m2 = line:match('^(.+):(%d+):%s*(.*)$')
-      if f2 then
-        items[#items + 1] = {
-          filename = f2,
-          lnum = tonumber(l2),
-          text = m2,
-        }
-      end
+    local item = parse_quickfix_line(line, cwd)
+    if item then
+      items[#items + 1] = item
     end
   end
-
   if #items == 0 then
     return false
   end
-
   vim.fn.setqflist(items, 'r')
   vim.cmd('copen')
   return true
@@ -122,7 +139,7 @@ function M.build_file(file_path)
         if exit_code == 0 then
           koka_ui.notify('✓ Build completed successfully', vim.log.levels.INFO)
         else
-          M.populate_quickfix(output)
+          M.populate_quickfix(output, cwd)
           koka_ui.notify(string.format('✗ Build failed with exit code %d', exit_code), vim.log.levels.ERROR)
         end
       end,
@@ -406,7 +423,7 @@ local function parse_type(t)
   if inner:match('%S') then
     for _, raw in ipairs(split_top_commas(inner)) do
       local seg = raw:match('^%s*(.-)%s*$')
-      local name, ty = seg:match('^[%?]?([A-Za-z_][A-Za-z0-9_]*)%s*:%s*(.+)$')
+      local name, ty = seg:match(ident.NAME_CAPTURE .. '%s*:%s*(.+)$')
       if name and ty then
         params[#params + 1] = { name = name, type = ty }
       else
@@ -476,7 +493,7 @@ function M.apply_signature(bufnr, func, params, ret)
     local seg_start = open + 1
     for idx, seg in ipairs(src_params) do
       local lead = seg:match('^%s*')
-      local name_part = seg:sub(#lead + 1):match('^[%?]?[A-Za-z_][A-Za-z0-9_]*')
+      local name_part = seg:sub(#lead + 1):match(ident.NAME)
       local has_type = seg:find(':', 1, true) ~= nil
       local is_default = seg:find('=', 1, true) ~= nil
       local inferred = params[idx]
@@ -660,7 +677,7 @@ end
 local function parse_param_types(inner)
   local map = {}
   for _, seg in ipairs(split_top_commas(inner)) do
-    local nm, ty = seg:match('^%s*[%?]?([A-Za-z_][A-Za-z0-9_]*)%s*:%s*(.+)$')
+    local nm, ty = seg:match('^%s*' .. ident.NAME_CAPTURE_LOOSE .. '%s*:%s*(.+)$')
     if nm and ty then
       map[nm] = ty
     end

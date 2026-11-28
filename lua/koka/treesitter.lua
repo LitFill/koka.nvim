@@ -4,6 +4,7 @@
 ---@brief ]]
 
 local koka_ui = require('koka.ui')
+local ident = require('koka.ident')
 
 local M = {}
 
@@ -132,7 +133,8 @@ function M._find_runnables_fallback(bufnr)
   local runnables = {}
 
   for line_nr, line in ipairs(lines) do
-    local func_name = line:match('^%s*pub%s+fun%s+([%w%-]+)%s*%(') or line:match('^%s*fun%s+([%w%-]+)%s*%(')
+    local func_name = line:match('^%s*pub%s+fun%s+' .. ident.PLAIN_CAPTURE .. '%s*%(')
+      or line:match('^%s*fun%s+' .. ident.PLAIN_CAPTURE .. '%s*%(')
     if func_name then
       local func_type = nil
       if func_name == 'main' then
@@ -502,7 +504,7 @@ function M._find_total_calls_fallback(bufnr)
   local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
   local results = {}
   for idx, line in ipairs(lines) do
-    for fname, args in line:gmatch('([%w_]+)%(([^%(%)]*)%)') do
+    for fname, args in line:gmatch(ident.PLAIN_CAPTURE .. '%(([^%(%)]*)%)') do
       local ok = true
       local parts = {}
       if args ~= '' then
