@@ -105,6 +105,19 @@ When LSP is active, codelens appear above runnable functions showing
 > **Note**: Codelens may be clickable in some Neovim configurations, but the
 > recommended way to run functions is using `:Koka run` command.
 
+### Indentation
+
+`indentexpr` is installed for every Koka buffer, so `<CR>`, `o` and `==`
+indent by block structure (`{`, `}`, `match` arms, trailing operators) using
+the TreeSitter parse tree when the parser is available, and the previous
+line's indentation otherwise. `shiftwidth`, `expandtab` and `tabstop` are
+respected; `smartindent` and `cindent` are turned off for Koka buffers
+because they fight the expression.
+
+The plugin installs this from its own `FileType` autocommand, so it wins over
+an `indentexpr` set by other plugins from the user config (nvim-treesitter's
+koka query aborts inside its own indent module and yields column 0).
+
 ## Project Configuration
 
 Create a `koka.json` or `.koka.json` file in your project root:
@@ -245,6 +258,7 @@ koka.nvim/
 │   ├── project.lua             # Project detection and config parsing
 │   ├── treesitter.lua          # TreeSitter detection and queries
 │   ├── debugger.lua            # Code execution via LSP and koka -e
+│   ├── indent.lua              # indentexpr for Koka buffers
 │   ├── commands/
 │   │   ├── init.lua            # General commands setup
 │   │   ├── codelens.lua        # Code execution and codelens
