@@ -64,6 +64,13 @@ function M.refresh(bufnr, manual)
   end
 
   local s = ensure_state(bufnr)
+  -- A changed buffer invalidates both the signature set and the cached texts.
+  local tick = vim.api.nvim_buf_get_var(bufnr, 'changedtick')
+  if s.tick ~= tick then
+    s.cache = {}
+    s.sigs = nil
+    s.tick = tick
+  end
   s.gen = s.gen + 1
   local gen = s.gen
   M.clear(bufnr)
@@ -75,11 +82,9 @@ function M.refresh(bufnr, manual)
   local max = config.inlay.max_results
 
   local function is_total_call(call, effects)
-    if call.expr then
-      return true
-    end
-    -- Unknown functions may be imported total functions. Run them.
-    return not (effects and effects[call.func_name])
+    -- Only a call whose own wrapper is effect-free may run. Unknown functions
+    -- are not assumed total: that would execute side effects on buffer open.
+    return call.chk ~= nil and not (effects and effects[call.chk])
   end
 
   local function run_total(_total, effects)
@@ -90,13 +95,13 @@ function M.refresh(bufnr, manual)
         break
       end
       shown = shown + 1
-      local cached = s.cache[call.key]
+      local cached = s.cache[s.tick .. '|' .. call.key]
       if cached then
         M.render_one(bufnr, call, cached)
       elseif is_total_call(call, effects) then
         to_eval[#to_eval + 1] = call
-      elseif effects and effects[call.func_name] then
-        M.render_effect(bufnr, call, effects[call.func_name])
+      elseif effects and effects[call.chk] then
+        M.render_effect(bufnr, call, effects[call.chk])
       end
     end
     local skipped = #calls - shown
@@ -121,7 +126,7 @@ function M.refresh(bufnr, manual)
         for _, call in ipairs(to_eval) do
           local text = results[call.key]
           if text then
-            s.cache[call.key] = text
+            s.cache[s.tick .. '|' .. call.key] = text
             M.render_one(bufnr, call, text)
           end
         end
@@ -143,8 +148,8 @@ function M.refresh(bufnr, manual)
     koka_ui.notify('first run may take longer than later ones, please wait', vim.log.levels.INFO)
   end
 
-  -- Phase 1: get signatures. The wrapper has no calls, so nothing runs.
-  debugger.eval_calls(proj, path, lines, {}, function(_results, total, effects, err)
+  -- Phase 1: get signatures. The wrapper only declares the per-call functions.
+  debugger.eval_calls(proj, path, lines, calls, function(_results, total, effects, err)
     if gen ~= s.gen then
       return
     end
@@ -156,7 +161,7 @@ function M.refresh(bufnr, manual)
     end
     s.sigs = { total = total, effects = effects }
     run_total(total, effects)
-  end, 20000)
+  end, 20000, { sigs_only = true })
 end
 
 ---Clear the cache for a buffer and refresh it with progress.

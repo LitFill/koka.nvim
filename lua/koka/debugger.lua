@@ -14,6 +14,7 @@ local M = {}
 local koka_cmd = require('koka.koka_cmd')
 local koka_ui = require('koka.ui')
 local koka_run = require('koka.run')
+local project = require('koka.project')
 
 ---Execute a program or function using Koka LSP
 ---@param client vim.lsp.Client The LSP client
@@ -62,7 +63,7 @@ function M.execute(client, project_config, args, callback)
     local output_path = result
     -- Handle absolute paths correctly (bug fix: was blindly joining with cwd)
     local full_path
-    if vim.startswith(output_path, '/') or vim.startswith(output_path, '%a:') then
+    if project.is_absolute_path(output_path) then
       full_path = output_path
     else
       full_path = vim.fs.joinpath(project_config.cwd or vim.fs.dirname(args.program), output_path)
@@ -189,33 +190,82 @@ function M.eval_total(project_config, program_path, lines, func_name, args_text,
   end, timeout_ms)
 end
 
----Build the wrapper source for many calls. Each result follows a marker line.
+---Build the wrapper source for many calls.
+---Each call becomes its own function, so `--showtypesigs` reports that call's
+---effect row under a stable name (`call.chk`) and a call that cannot be shown
+---fails on its own instead of the whole batch. With `sigs_only` no entry point
+---is emitted, so nothing runs.
 ---@param lines string[] The buffer lines
 ---@param calls table[] The calls
+---@param sigs_only boolean? Only declare the per-call functions
 ---@return string[] wrapper_lines
-function M._build_wrapper_calls(lines, calls)
+function M._build_wrapper_calls(lines, calls, sigs_only)
   local wrapper = {}
   vim.list_extend(wrapper, lines)
+  wrapper[#wrapper + 1] = ''
+  for i, call in ipairs(calls) do
+    local name = call.chk or string.format('kokaChk%d', i)
+    call.chk = name
+    local body = call.expr or string.format('%s(%s)', call.func_name, call.args_text)
+    wrapper[#wrapper + 1] = string.format('fun %s() { %s }', name, body)
+  end
+  if sigs_only then
+    return wrapper
+  end
   wrapper[#wrapper + 1] = ''
   wrapper[#wrapper + 1] = 'fun kokaInlayEntry() {'
   -- Koka rejects an empty body. A unit statement makes it valid.
   wrapper[#wrapper + 1] = '  ()'
   for i, call in ipairs(calls) do
     wrapper[#wrapper + 1] = string.format('  println("@@KI%d@@")', i)
-    if call.expr then
-      wrapper[#wrapper + 1] = string.format('  println(%s)', call.expr)
-    else
-      wrapper[#wrapper + 1] = string.format('  println(%s(%s))', call.func_name, call.args_text)
-    end
+    wrapper[#wrapper + 1] = string.format('  println(%s())', call.chk)
   end
   wrapper[#wrapper + 1] = '}'
   return wrapper
 end
 
----Parse --showtypesigs output. Return the set of total definition names.
----@param out string[] The stdout lines
----@return table<string,boolean>
+---Find the first top-level `->`, ignoring arrows nested in parentheses, angle
+---brackets or square brackets.
+---@param text string
+---@return number? byte index of the arrow
+local function find_top_arrow(text)
+  local depth = 0
+  for pos = 1, #text do
+    local c = text:sub(pos, pos)
+    if c == '(' or c == '<' or c == '[' then
+      depth = depth + 1
+    elseif c == ')' or c == '>' or c == ']' then
+      depth = depth - 1
+    elseif depth == 0 and c == '-' and text:sub(pos + 1, pos + 1) == '>' then
+      return pos
+    end
+  end
+  return nil
+end
+
+---Whether a type has a space at top level. Koka prints a closed effect row as
+---`exn int`, so the space is what separates the effect from the result type.
+---@param text string
+---@return boolean
+local function has_top_space(text)
+  local depth = 0
+  for pos = 1, #text do
+    local c = text:sub(pos, pos)
+    if c == '(' or c == '<' or c == '[' then
+      depth = depth + 1
+    elseif c == ')' or c == '>' or c == ']' then
+      depth = depth - 1
+    elseif depth == 0 and c == ' ' then
+      return true
+    end
+  end
+  return false
+end
+
 ---Parse --showtypesigs output. Return the total set and the effect map.
+---Koka prints `module/name: <params> -> <effect>? <result>`; older builds used a
+---`sig/` prefix. Only a top-level arrow counts, so `(f : (int) -> int) -> int`
+---is read correctly.
 ---@param out string[] The stdout lines
 ---@return table<string,boolean> total
 ---@return table<string,string> effects
@@ -223,15 +273,19 @@ function M._parse_sigs(out)
   local total = {}
   local effects = {}
   for _, line in ipairs(out) do
-    local name = line:match('^sig/([^%s:]+)')
-    local rest = line:match('%-%>%s*(.*)$')
+    local name, rest = line:match('^sig/([^%s:]+)%s*:%s*(.*)$')
+    if not name then
+      name, rest = line:match('^([%w%-%.]+/[%w%-%.~/]+)%s*:%s*(.*)$')
+    end
     if name and rest then
-      local first = rest:match('^(%S+)')
-      local is_effect = rest:sub(1, 1) == '<' or (first and (first:find('/') or koka_cmd.effect_words[first]))
-      if is_effect then
-        effects[name] = rest
-      elseif first then
-        total[name] = true
+      local arrow = find_top_arrow(rest)
+      if arrow then
+        local result = rest:sub(arrow + 2):gsub('^%s+', '')
+        if result:sub(1, 1) == '<' or has_top_space(result) then
+          effects[name] = result
+        else
+          total[name] = true
+        end
       end
     end
   end
@@ -243,24 +297,28 @@ end
 ---@param program_path string Path to the Koka program
 ---@param lines string[] The buffer lines
 ---@param calls table[] The calls
----@param callback fun(results: table<string,string>?, total: table<string,boolean>?, error_text: string?)
+---@param callback fun(results: table<string,string>?, total: table<string,boolean>?, effects: table<string,string>?, error_text: string?)
 ---@param timeout_ms? number Kill the run after this many milliseconds
-function M.eval_calls(project_config, program_path, lines, calls, callback, timeout_ms)
+---@param opts? {sigs_only: boolean?} Only emit signatures, run nothing
+function M.eval_calls(project_config, program_path, lines, calls, callback, timeout_ms, opts)
+  opts = opts or {}
   timeout_ms = timeout_ms or 20000
   local orig_dir = vim.fs.dirname(program_path)
   local module_name = M._module_name(lines, program_path)
   local tmp_dir = vim.fn.tempname()
   vim.fn.mkdir(tmp_dir, 'p')
   local tmp_file = vim.fs.joinpath(tmp_dir, module_name .. '.kk')
-  local wrapper = M._build_wrapper_calls(lines, calls)
+  local wrapper = M._build_wrapper_calls(lines, calls, opts.sigs_only)
   vim.fn.writefile(wrapper, tmp_file)
 
   local cmd = koka_cmd.build(project_config, {
-    mode = '-e',
+    mode = opts.sigs_only and '-l' or '-e',
     file = tmp_file,
-    main_entry = 'kokaInlayEntry',
+    main_entry = opts.sigs_only and nil or 'kokaInlayEntry',
     showtypesigs = true,
-    buildtag = 'nvim',
+    -- Inlay compiles its own module with a per-call entry point; sharing the
+    -- `nvim` tag with the LSP and the debugger would poison that cache.
+    buildtag = 'nvim-eval',
     include = { orig_dir },
   })
 
@@ -284,6 +342,8 @@ function M.eval_calls(project_config, program_path, lines, calls, callback, time
 
   job = vim.fn.jobstart(cmd, {
     cwd = cwd,
+    stdout_buffered = true,
+    stderr_buffered = true,
     on_stdout = function(_, data)
       if data then
         vim.list_extend(out, data)

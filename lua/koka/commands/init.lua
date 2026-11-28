@@ -114,6 +114,8 @@ function M.build_file(file_path)
 
     vim.fn.jobstart(cmd, {
       cwd = cwd,
+      stdout_buffered = true,
+      stderr_buffered = true,
       on_stdout = collect,
       on_stderr = collect,
       on_exit = function(_, exit_code)
@@ -170,11 +172,13 @@ function M.run_tests(file_path, test_names)
       local out = {}
       vim.fn.jobstart(cmd, {
         cwd = cwd,
+        stdout_buffered = true,
+        stderr_buffered = true,
         on_stdout = function(_, data)
-          out[#out + 1] = table.concat(data)
+          out[#out + 1] = table.concat(data, '\n')
         end,
         on_stderr = function(_, data)
-          out[#out + 1] = table.concat(data)
+          out[#out + 1] = table.concat(data, '\n')
         end,
         on_exit = function(_, code)
           local log = table.concat(out)
@@ -1023,7 +1027,7 @@ function M.goto_file(name)
   local target = is_kk(name) and name or (name .. '.kk')
 
   -- Absolute path.
-  if name:match('^/') or name:match('^%a:') then
+  if require('koka.project').is_absolute_path(name) then
     if vim.uv.fs_stat(target) then
       vim.cmd.edit(vim.fn.fnameescape(target))
     else

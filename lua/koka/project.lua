@@ -7,6 +7,13 @@ local koka_ui = require('koka.ui')
 
 local project = {}
 
+---Whether a path is absolute, POSIX or Windows drive style.
+---@param path string
+---@return boolean
+function project.is_absolute_path(path)
+  return type(path) == 'string' and (path:sub(1, 1) == '/' or path:match('^%a:') ~= nil)
+end
+
 ---Validate project configuration
 ---@param config koka.project.Config
 ---@return boolean ok True if valid, false otherwise
@@ -245,7 +252,7 @@ function project.get_resolved_config(file_name, callback)
     end
     -- If cwd is relative, resolve it relative to the project directory
     if resolved.cwd then
-      if not (resolved.cwd:match('^/') or resolved.cwd:match('^%a:')) then
+      if not project.is_absolute_path(resolved.cwd) then
         local base_dir = project_dir or current_dir
         resolved.cwd = vim.fs.joinpath(base_dir, resolved.cwd)
       end
