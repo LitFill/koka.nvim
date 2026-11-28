@@ -14,6 +14,13 @@ function M.check()
   local err = health.error or health.report_error
   local info = health.info or health.report_info
 
+  if vim.fn.has('nvim-0.11') ~= 1 then
+    err('koka.nvim requires Neovim 0.11 or above', {
+      'Upgrade Neovim; the plugin uses vim.lsp.config, client:request and jobstart{term=true}.',
+    })
+    return
+  end
+
   start('koka.nvim report')
 
   -- koka compiler in PATH.

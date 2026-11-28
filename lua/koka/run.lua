@@ -48,6 +48,8 @@ function M.run_term(cmd, cwd, title, on_exit)
       local buf = vim.api.nvim_win_get_buf(win)
       if vim.bo[buf].buftype == 'terminal' then
         pcall(vim.api.nvim_win_close, win, true)
+        -- Deleting the buffer stops the job; a window close alone leaves it running.
+        pcall(vim.api.nvim_buf_delete, buf, { force = true })
       else
         remaining = remaining + 1
       end

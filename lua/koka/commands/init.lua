@@ -8,6 +8,15 @@ local koka_cmd = require('koka.koka_cmd')
 local koka_ui = require('koka.ui')
 local ident = require('koka.ident')
 
+---Sorted keys, so command completions have a stable order.
+---@param tbl table
+---@return string[]
+local function sorted_keys(tbl)
+  local keys = vim.tbl_keys(tbl)
+  table.sort(keys)
+  return keys
+end
+
 ---@class koka.commands.Subcommand
 ---
 ---The command implementation
@@ -312,6 +321,10 @@ function M.set_config(key, raw)
       koka_ui.notify(string.format('set: unknown setting: %s', key), vim.log.levels.ERROR)
       return
     end
+    if type(def) ~= 'table' then
+      koka_ui.notify(string.format('set: unknown setting: %s', key), vim.log.levels.ERROR)
+      return
+    end
   end
 
   local value
@@ -529,6 +542,10 @@ end
 ---Infer and write the signature of the function under the cursor.
 function M.write_signature()
   local bufnr = vim.api.nvim_get_current_buf()
+  if vim.api.nvim_get_option_value('modified', { buf = bufnr }) then
+    koka_ui.notify('sig: save the buffer first, the type is inferred from disk', vim.log.levels.WARN)
+    return
+  end
   local treesitter = require('koka.treesitter')
   local line = vim.api.nvim_win_get_cursor(0)[1] - 1
   local func = treesitter.find_function_at(bufnr, line)
@@ -536,6 +553,7 @@ function M.write_signature()
     koka_ui.notify('sig: no function at cursor', vim.log.levels.WARN)
     return
   end
+  local tick = vim.api.nvim_buf_get_var(bufnr, 'changedtick')
   local file_path = vim.api.nvim_buf_get_name(bufnr)
   local project = require('koka.project')
   project.get_resolved_config(file_path, function(config)
@@ -564,6 +582,10 @@ function M.write_signature()
 
     ---@param inferred string
     local function apply(inferred)
+      if vim.api.nvim_buf_get_var(bufnr, 'changedtick') ~= tick then
+        koka_ui.notify('sig: buffer changed while inferring, signature not applied', vim.log.levels.WARN)
+        return
+      end
       local params, ret = parse_type(inferred)
       if not params then
         koka_ui.notify(string.format('sig: could not parse type: %s', inferred), vim.log.levels.WARN)
@@ -816,6 +838,7 @@ end
 function M.try_fill_match(bufnr, cursor)
   local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
   local line = cursor[1] - 1
+  local tick = vim.api.nvim_buf_get_var(bufnr, 'changedtick')
 
   local arm
   for i = line, math.max(0, line - 3), -1 do
@@ -910,9 +933,18 @@ function M.try_fill_match(bufnr, cursor)
       end
       local arms = build_arms(ctors, func.name, indent)
       vim.schedule(function()
-        if vim.api.nvim_buf_is_valid(bufnr) then
-          vim.api.nvim_buf_set_lines(bufnr, arm, arm + 1, false, arms)
+        if not vim.api.nvim_buf_is_valid(bufnr) then
+          return
         end
+        if vim.api.nvim_buf_get_var(bufnr, 'changedtick') ~= tick then
+          koka_ui.notify('case-split: buffer changed, arms not inserted', vim.log.levels.WARN)
+          return
+        end
+        -- The arm may have been edited or removed while the request was in flight.
+        if vim.trim(vim.api.nvim_buf_get_lines(bufnr, arm, arm + 1, false)[1] or '') ~= MATCH_STUB_ARM then
+          return
+        end
+        vim.api.nvim_buf_set_lines(bufnr, arm, arm + 1, false, arms)
       end)
       koka_ui.notify(string.format('case-split: %d constructor arms for %s', #ctors, base), vim.log.levels.INFO)
     end
@@ -1251,8 +1283,7 @@ local function register_subcommand_tbl(name, subcmd_tbl)
       if subcmd then
         subcmd.impl(args, ...)
       else
-        local available = vim.tbl_keys(subcmd_tbl)
-        table.sort(available)
+        local available = sorted_keys(subcmd_tbl)
         koka_ui.notify(
           ([[
 Koka %s: expected a subcommand.
@@ -1271,9 +1302,9 @@ Usage: :Koka %s <subcommand> [args]
       if subcmd_arg_lead and subcmd_arg_lead ~= '' then
         return vim.tbl_filter(function(n)
           return vim.startswith(n, subcmd_arg_lead)
-        end, vim.tbl_keys(subcmd_tbl))
+        end, sorted_keys(subcmd_tbl))
       end
-      return vim.tbl_keys(subcmd_tbl)
+      return sorted_keys(subcmd_tbl)
     end,
   }
 end
@@ -1322,8 +1353,7 @@ local function koka_command_imp(opts)
   local args = #fargs > 1 and vim.list_slice(fargs, 2) or {}
   local command = command_tbl[cmd]
   if not command then
-    local available = vim.tbl_keys(command_tbl)
-    table.sort(available)
+    local available = sorted_keys(command_tbl)
     koka_ui.notify(
       string.format('Unknown command: %s. Available: %s', cmd, table.concat(available, ', ')),
       vim.log.levels.ERROR
@@ -1351,7 +1381,7 @@ function M.setup()
       if cmdline:match("^['<,'>]*Koka[!]*%s+%S*$") then
         return vim.tbl_filter(function(c)
           return vim.startswith(c, arg_lead)
-        end, vim.tbl_keys(command_tbl))
+        end, sorted_keys(command_tbl))
       end
     end,
     bang = false,

@@ -5,8 +5,9 @@
 
 local M = {}
 
----Draw virtual text at the end of a line.
----The text is one highlight group. The draw is guarded.
+---Draw virtual text at a column.
+---The text is one highlight group. `strict = false` keeps the mark when the
+---line shrank, so no pcall is needed.
 ---@param bufnr number The buffer
 ---@param ns number The namespace id
 ---@param line number Zero-based row
@@ -17,10 +18,11 @@ function M.virt_text(bufnr, ns, line, col, text, hl)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
-  pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, line, col, {
+  vim.api.nvim_buf_set_extmark(bufnr, ns, line, col, {
     virt_text = { { text, hl } },
-    virt_text_pos = 'eol',
+    virt_text_pos = 'inline',
     hl_mode = 'combine',
+    strict = false,
   })
 end
 

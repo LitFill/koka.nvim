@@ -314,7 +314,7 @@ function M.eval_calls(project_config, program_path, lines, calls, callback, time
   local cmd = koka_cmd.build(project_config, {
     mode = opts.sigs_only and '-l' or '-e',
     file = tmp_file,
-    main_entry = opts.sigs_only and nil or 'kokaInlayEntry',
+    main_entry = (not opts.sigs_only) and 'kokaInlayEntry' or nil,
     showtypesigs = true,
     -- Inlay compiles its own module with a per-call entry point; sharing the
     -- `nvim` tag with the LSP and the debugger would poison that cache.
