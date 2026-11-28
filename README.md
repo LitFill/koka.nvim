@@ -200,14 +200,22 @@ Supported targets: `c`, `c32`, `c64`, `c64c`, `js`, `jsnode`, `jsweb`,
 
 ### LSP Configuration
 
-The plugin automatically starts the Koka LSP server. For manual configuration:
+The plugin starts the Koka language server automatically for each `.kk`
+buffer, so no `lspconfig` setup is required. To pass extra settings to the
+client, set `vim.lsp.config.koka`; the plugin merges it over its defaults:
 
 ```lua
--- In your LSP configuration
-require'lspconfig'.koka.setup{
-  -- LSP server will be managed by koka.nvim
-  autostart = false,
+-- Optional: extra client config, merged over the plugin defaults
+vim.lsp.config.koka = {
+  settings = {},
 }
+```
+
+To stop the plugin from auto-starting the server, disable auto-attach and
+start it manually with `:Koka lsp start`:
+
+```lua
+vim.g.koka = { lsp = { auto_attach = false } }
 ```
 
 ### Inlay Hints
@@ -274,8 +282,7 @@ koka.nvim/
 └── queries/koka/               # TreeSitter queries
     ├── highlights.scm
     ├── indents.scm
-    ├── injections.scm
-    └── locals.scm
+    └── injections.scm
 ```
 
 ## Development
